@@ -48,7 +48,12 @@ export interface AiPendingAction {
     | 'dispute_invoice'
     | 'create_kanban_card'
     | 'move_kanban_card'
-    | 'update_kanban_card';
+    | 'update_kanban_card'
+    | 'create_project'
+    | 'update_project'
+    | 'add_project_member'
+    | 'create_kanban_board'
+    | 'assign_kanban_card';
   status: 'pending' | 'confirmed' | 'rejected';
   targetId?: string;
   targetLabel: string;

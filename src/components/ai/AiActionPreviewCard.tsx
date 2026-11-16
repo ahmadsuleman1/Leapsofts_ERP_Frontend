@@ -16,6 +16,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CloseOutlinedIcon from '@mui/icons-material/CloseOutlined';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import {
   useConfirmAiAction,
   useRejectAiAction,
@@ -83,7 +84,18 @@ const FIELD_LABELS: Record<string, string> = {
   issueDate: 'Issue date',
   dueDate: 'Due date',
   client: 'Client',
-  cardId: 'Card',
+  cardId: 'Card ID',
+  projectId: 'Project ID',
+  boardId: 'Board ID',
+  tags: 'Tags',
+  status: 'Status',
+  role: 'Role',
+  member: 'Team Member',
+  project: 'Project',
+  columns: 'Columns',
+  taskTitle: 'Task Title',
+  priority: 'Priority',
+  assignedTo: 'Assigned To',
   isDone: 'Done',
 };
 
@@ -101,6 +113,18 @@ const HIDDEN_PROPOSED_KEYS = new Set([
   'scheduledAt',
   'operation',
   'items',
+  // Immutable system IDs:
+  'cardId',
+  'projectId',
+  'boardId',
+  'columnId',
+  'targetId',
+  'userId',
+  'clientId',
+  'templateId',
+  '_id',
+  'id',
+  '_settingsPatch',
 ]);
 
 const isArrayOfObjects = (value: unknown): boolean =>
@@ -168,6 +192,11 @@ const ACTION_TYPE_TITLES: Record<AiPendingAction['actionType'], string> = {
   create_kanban_card: 'Create board card',
   move_kanban_card: 'Move board card',
   update_kanban_card: 'Update board card',
+  create_project: 'Create Project',
+  update_project: 'Update Project',
+  add_project_member: 'Assign Project Member',
+  create_kanban_board: 'Create Kanban Board',
+  assign_kanban_card: 'Assign Task Card',
 };
 
 const EMAILS_CLIENT = new Set<AiPendingAction['actionType']>([
@@ -353,11 +382,11 @@ export const AiActionPreviewCard = ({
       }}
     >
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <AutoAwesomeIcon sx={{ fontSize: 18, color: tokens.brand.primary }} />
           <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-            {ACTION_TYPE_TITLES[action.actionType]} — {action.targetLabel}
+            {`${ACTION_TYPE_TITLES[action.actionType] || action.actionType} — ${action.targetLabel || ''}`}
           </Typography>
         </Box>
         <Chip
@@ -379,6 +408,48 @@ export const AiActionPreviewCard = ({
           sx={{ fontWeight: 700, fontSize: '0.7rem' }}
         />
       </Box>
+
+      {/* Target / Task ID badge (locked / immutable) */}
+      {Boolean(action.targetId || action.proposed?.cardId) && (
+        <Box
+          sx={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 0.75,
+            px: 1,
+            py: 0.25,
+            borderRadius: '6px',
+            bgcolor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+            border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`,
+            width: 'fit-content',
+            mb: 1.25,
+          }}
+        >
+          <LockOutlinedIcon sx={{ fontSize: 13, color: 'text.secondary' }} />
+          <Typography
+            variant="caption"
+            sx={{
+              fontFamily: 'monospace',
+              fontWeight: 600,
+              color: 'text.secondary',
+              fontSize: '0.73rem',
+            }}
+          >
+            ID: {String(action.targetId || action.proposed?.cardId)}
+          </Typography>
+          <Chip
+            size="small"
+            label="Locked"
+            sx={{
+              height: 16,
+              fontSize: '0.6rem',
+              fontWeight: 700,
+              bgcolor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+              color: 'text.secondary',
+            }}
+          />
+        </Box>
+      )}
 
       {action.actionType === 'create_meeting' && isPending && (
         <Box

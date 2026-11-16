@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Avatar,
   Box,
@@ -18,6 +18,7 @@ import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1';
 import { WeekdayPicker } from '@/components/kpi/WeekdayPicker';
 import {
   useDeleteSalesKpiAssignment,
@@ -617,10 +618,45 @@ const AssignmentCard = ({ assignment }: { assignment: SalesKpiAssignment }) => {
   );
 };
 
-export const SalesKpiAssignmentsPanel = () => {
+interface SalesKpiAssignmentsPanelProps {
+  filterTemplateId?: string | null;
+  onAssignClick?: () => void;
+  searchQuery?: string;
+}
+
+export const SalesKpiAssignmentsPanel = ({
+  filterTemplateId,
+  onAssignClick,
+  searchQuery = '',
+}: SalesKpiAssignmentsPanelProps = {}) => {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
   const { data: assignments = [], isLoading } = useSalesKpiAssignments();
+
+  const filteredAssignments = useMemo(() => {
+    let list = assignments;
+    if (filterTemplateId && filterTemplateId !== 'all') {
+      list = list.filter((a) => {
+        const tid =
+          typeof a.templateId === 'object' && a.templateId !== null
+            ? String((a.templateId as any)._id)
+            : String(a.templateId);
+        return tid === String(filterTemplateId);
+      });
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter((a) => {
+        const u = a.userId as any;
+        const name = typeof u === 'object' && u !== null
+          ? `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim().toLowerCase()
+          : '';
+        const email = typeof u === 'object' && u !== null ? (u.email ?? '').toLowerCase() : '';
+        return name.includes(q) || email.includes(q);
+      });
+    }
+    return list;
+  }, [assignments, filterTemplateId, searchQuery]);
 
   if (isLoading) {
     return (
@@ -634,16 +670,67 @@ export const SalesKpiAssignmentsPanel = () => {
     return (
       <Paper sx={{ p: 6, textAlign: 'center', borderRadius: '24px', bgcolor: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)', border: `2px dashed ${isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`, boxShadow: 'none' }}>
         <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, color: tokens.text.secondary }}>No assignees yet</Typography>
-        <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+        <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500, mb: 2 }}>
           Assign a sales KPI template to a team member to start generating daily tasks.
         </Typography>
+        {onAssignClick && (
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<PersonAddAlt1Icon />}
+            onClick={onAssignClick}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 700,
+              borderRadius: '10px',
+              boxShadow: 'none',
+              bgcolor: tokens.brand.solid,
+              '&:hover': { bgcolor: tokens.brand.solid },
+            }}
+          >
+            Assign Team Members
+          </Button>
+        )}
+      </Paper>
+    );
+  }
+
+  if (filteredAssignments.length === 0) {
+    return (
+      <Paper sx={{ p: 5, textAlign: 'center', borderRadius: '20px', bgcolor: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)', border: `2px dashed ${isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`, boxShadow: 'none' }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 0.5, color: tokens.text.secondary }}>
+          {searchQuery ? 'No matching members found' : 'No members assigned to this template'}
+        </Typography>
+        <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500, mb: 2 }}>
+          {searchQuery
+            ? 'Try searching with a different name or email address.'
+            : 'Assign team members to this template to automatically schedule daily tasks.'}
+        </Typography>
+        {onAssignClick && !searchQuery && (
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<PersonAddAlt1Icon />}
+            onClick={onAssignClick}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 700,
+              borderRadius: '10px',
+              boxShadow: 'none',
+              bgcolor: tokens.brand.solid,
+              '&:hover': { bgcolor: tokens.brand.solid },
+            }}
+          >
+            Assign Team Members
+          </Button>
+        )}
       </Paper>
     );
   }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {assignments.map((assignment) => (
+      {filteredAssignments.map((assignment) => (
         // Remount on server-side change so the inline drafts pick up fresh values.
         <AssignmentCard key={`${assignment._id}:${assignment.updatedAt ?? ''}`} assignment={assignment} />
       ))}
