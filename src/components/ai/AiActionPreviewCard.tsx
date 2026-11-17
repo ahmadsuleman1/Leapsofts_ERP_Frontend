@@ -12,7 +12,11 @@ import {
   FormControlLabel,
   Switch,
   InputAdornment,
+  IconButton,
+  Grid,
+  MenuItem,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CloseOutlinedIcon from '@mui/icons-material/CloseOutlined';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
@@ -54,7 +58,7 @@ const FIELD_LABELS: Record<string, string> = {
   bio: 'Bio',
   shiftStart: 'Shift Start',
   shiftEnd: 'Shift End',
-  title: 'Meeting Title',
+  title: 'Title',
   scheduledAt: 'Scheduled Time (UTC)',
   scheduledAtLocal: 'Scheduled Time (your timezone)',
   description: 'Description',
@@ -75,9 +79,7 @@ const FIELD_LABELS: Record<string, string> = {
   itemCount: 'Items',
   itemSummary: 'Item details',
   metric: 'Metric',
-  title: 'Task Title',
   taskTitle: 'Task Title',
-  description: 'Description',
   board: 'Board',
   column: 'Column',
   columnId: 'Column',
@@ -90,7 +92,6 @@ const FIELD_LABELS: Record<string, string> = {
   lines: 'Line items',
   sendsEmail: 'Email',
   issueDate: 'Issue date',
-  dueDate: 'Due date',
   client: 'Client',
   cardId: 'Card ID',
   projectId: 'Project ID',
@@ -101,9 +102,6 @@ const FIELD_LABELS: Record<string, string> = {
   member: 'Team Member',
   project: 'Project',
   columns: 'Columns',
-  taskTitle: 'Task Title',
-  priority: 'Priority',
-  assignedTo: 'Assigned To',
   isDone: 'Done',
 };
 
@@ -263,6 +261,21 @@ export const AiActionPreviewCard = ({
       });
   }, [action.actionType, action.proposed]);
 
+  const isTaskCard = action.actionType === 'create_kanban_card';
+
+  const [showDescription, setShowDescription] = useState<boolean>(() => {
+    return Boolean(action.proposed?.description && String(action.proposed.description).trim().length > 0);
+  });
+
+  const standardEntries = useMemo(() => {
+    if (isTaskCard) {
+      return proposedEntries.filter(
+        ([k]) => k !== 'priority' && k !== 'dueDate' && k !== 'description',
+      );
+    }
+    return proposedEntries;
+  }, [isTaskCard, proposedEntries]);
+
   const [sendGoogleInvite, setSendGoogleInvite] = useState<boolean>(() => {
     if (action.actionType !== 'create_meeting') return false;
     if (action.proposed.sendGoogleInvite === true) return true;
@@ -275,6 +288,11 @@ export const AiActionPreviewCard = ({
     for (const [k] of proposedEntries) {
       initial[k] = true;
     }
+    if (isTaskCard) {
+      initial.priority = true;
+      initial.dueDate = Boolean(action.proposed?.dueDate);
+      initial.description = Boolean(action.proposed?.description && String(action.proposed.description).trim().length > 0);
+    }
     return initial;
   });
 
@@ -282,6 +300,11 @@ export const AiActionPreviewCard = ({
     const initial: Record<string, string> = {};
     for (const [k, v] of proposedEntries) {
       initial[k] = formatProposedFieldValue(k, v, action, user ?? undefined);
+    }
+    if (isTaskCard) {
+      initial.priority = (initial.priority || String(action.proposed?.priority || 'medium')).toLowerCase();
+      initial.dueDate = initial.dueDate || String(action.proposed?.dueDate || '');
+      initial.description = initial.description || String(action.proposed?.description || '');
     }
     return initial;
   });
@@ -307,6 +330,17 @@ export const AiActionPreviewCard = ({
         } else {
           overrides[k] = editedValues[k];
         }
+      }
+    }
+    if (isTaskCard) {
+      if (selectedFields.priority && editedValues.priority) {
+        overrides.priority = editedValues.priority;
+      }
+      if (selectedFields.dueDate && editedValues.dueDate) {
+        overrides.dueDate = editedValues.dueDate;
+      }
+      if (selectedFields.description && editedValues.description?.trim()) {
+        overrides.description = editedValues.description.trim();
       }
     }
     if (action.actionType === 'create_meeting' && action.proposed.participants) {
@@ -536,7 +570,7 @@ export const AiActionPreviewCard = ({
 
       {/* Diff Rows */}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, my: 1.5 }}>
-        {proposedEntries.map(([fieldKey]) => {
+        {standardEntries.map(([fieldKey]) => {
           const prevVal = action.before?.[fieldKey];
           const checked = Boolean(selectedFields[fieldKey]);
           return (
@@ -704,6 +738,325 @@ export const AiActionPreviewCard = ({
             </Box>
           );
         })}
+
+        {isTaskCard && (
+          <>
+            {/* Priority & Due Date 2-Column Row */}
+            <Grid container spacing={1}>
+              <Grid item xs={12} sm={6}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 1,
+                    p: 1,
+                    height: '100%',
+                    borderRadius: '10px',
+                    bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+                    border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                  }}
+                >
+                  {isPending && (
+                    <Checkbox
+                      size="small"
+                      checked={Boolean(selectedFields.priority)}
+                      onChange={(e) =>
+                        setSelectedFields((prev) => ({ ...prev, priority: e.target.checked }))
+                      }
+                      sx={{ p: 0.25, mt: 0.25 }}
+                    />
+                  )}
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontWeight: 800,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                          color: 'text.secondary',
+                        }}
+                      >
+                        Priority
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label="New"
+                        sx={{
+                          height: 16,
+                          fontSize: '0.62rem',
+                          fontWeight: 700,
+                          bgcolor: 'rgba(45, 138, 94, 0.12)',
+                          color: tokens.semantic.success,
+                        }}
+                      />
+                    </Box>
+                    {isPending ? (
+                      <TextField
+                        select
+                        fullWidth
+                        size="small"
+                        disabled={!selectedFields.priority}
+                        value={editedValues.priority ? editedValues.priority.toLowerCase() : 'medium'}
+                        onChange={(e) =>
+                          setEditedValues((prev) => ({ ...prev, priority: e.target.value }))
+                        }
+                        sx={{
+                          '& .MuiInputBase-input': {
+                            fontSize: '0.82rem',
+                            py: 0.6,
+                            display: 'flex',
+                            alignItems: 'center',
+                          },
+                        }}
+                      >
+                        <MenuItem value="low">
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#10B981' }} />
+                            <span>Low</span>
+                          </Box>
+                        </MenuItem>
+                        <MenuItem value="medium">
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#3B82F6' }} />
+                            <span>Medium</span>
+                          </Box>
+                        </MenuItem>
+                        <MenuItem value="high">
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#F59E0B' }} />
+                            <span>High</span>
+                          </Box>
+                        </MenuItem>
+                        <MenuItem value="urgent">
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#EF4444' }} />
+                            <span>Urgent</span>
+                          </Box>
+                        </MenuItem>
+                      </TextField>
+                    ) : (
+                      <Typography variant="body2" sx={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                        {editedValues.priority || 'Medium'}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 1,
+                    p: 1,
+                    height: '100%',
+                    borderRadius: '10px',
+                    bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+                    border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                  }}
+                >
+                  {isPending && (
+                    <Checkbox
+                      size="small"
+                      checked={Boolean(selectedFields.dueDate)}
+                      onChange={(e) =>
+                        setSelectedFields((prev) => ({ ...prev, dueDate: e.target.checked }))
+                      }
+                      sx={{ p: 0.25, mt: 0.25 }}
+                    />
+                  )}
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontWeight: 800,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                          color: 'text.secondary',
+                        }}
+                      >
+                        Due Date
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label="New"
+                        sx={{
+                          height: 16,
+                          fontSize: '0.62rem',
+                          fontWeight: 700,
+                          bgcolor: 'rgba(45, 138, 94, 0.12)',
+                          color: tokens.semantic.success,
+                        }}
+                      />
+                    </Box>
+                    {isPending ? (
+                      <TextField
+                        type="date"
+                        fullWidth
+                        size="small"
+                        disabled={!selectedFields.dueDate}
+                        InputLabelProps={{ shrink: true }}
+                        value={
+                          editedValues.dueDate
+                            ? editedValues.dueDate.split('T')[0]
+                            : ''
+                        }
+                        onChange={(e) =>
+                          setEditedValues((prev) => ({ ...prev, dueDate: e.target.value }))
+                        }
+                        sx={{
+                          '& .MuiInputBase-input': {
+                            fontSize: '0.82rem',
+                            py: 0.6,
+                          },
+                        }}
+                      />
+                    ) : (
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {editedValues.dueDate || 'No due date'}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              </Grid>
+            </Grid>
+
+            {/* Description (Collapsible / Expandable & Scroll-Managed) */}
+            <Box sx={{ mt: 0.5 }}>
+              {showDescription ? (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 1,
+                    p: 1,
+                    borderRadius: '10px',
+                    bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+                    border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                  }}
+                >
+                  {isPending && (
+                    <Checkbox
+                      size="small"
+                      checked={Boolean(selectedFields.description)}
+                      onChange={(e) =>
+                        setSelectedFields((prev) => ({ ...prev, description: e.target.checked }))
+                      }
+                      sx={{ p: 0.25, mt: 0.25 }}
+                    />
+                  )}
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.4 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            fontWeight: 800,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                            color: 'text.secondary',
+                          }}
+                        >
+                          Description
+                        </Typography>
+                        <Chip
+                          size="small"
+                          label="New"
+                          sx={{
+                            height: 16,
+                            fontSize: '0.62rem',
+                            fontWeight: 700,
+                            bgcolor: 'rgba(45, 138, 94, 0.12)',
+                            color: tokens.semantic.success,
+                          }}
+                        />
+                      </Box>
+                      {isPending && !action.proposed?.description && (
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setShowDescription(false);
+                            setSelectedFields((prev) => ({ ...prev, description: false }));
+                          }}
+                          sx={{ p: 0.25, color: 'text.disabled', '&:hover': { color: 'text.primary' } }}
+                        >
+                          <CloseOutlinedIcon sx={{ fontSize: 14 }} />
+                        </IconButton>
+                      )}
+                    </Box>
+                    {isPending ? (
+                      <TextField
+                        fullWidth
+                        size="small"
+                        multiline
+                        minRows={2}
+                        maxRows={5}
+                        disabled={!selectedFields.description}
+                        placeholder="Add task details, notes, or acceptance criteria..."
+                        value={editedValues.description ?? ''}
+                        onChange={(e) =>
+                          setEditedValues((prev) => ({ ...prev, description: e.target.value }))
+                        }
+                        sx={{
+                          '& .MuiInputBase-root': {
+                            fontSize: '0.82rem',
+                            lineHeight: 1.5,
+                            maxHeight: 140,
+                            overflowY: 'auto !important',
+                          },
+                          '& .MuiInputBase-input': {
+                            scrollbarWidth: 'thin',
+                          },
+                        }}
+                      />
+                    ) : (
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 500,
+                          fontSize: '0.82rem',
+                          color: 'text.secondary',
+                          maxHeight: 140,
+                          overflowY: 'auto',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          p: 0.5,
+                        }}
+                      >
+                        {editedValues.description || 'No description provided'}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              ) : isPending ? (
+                <Button
+                  size="small"
+                  variant="text"
+                  startIcon={<AddIcon sx={{ fontSize: 16 }} />}
+                  onClick={() => {
+                    setShowDescription(true);
+                    setSelectedFields((prev) => ({ ...prev, description: true }));
+                  }}
+                  sx={{
+                    textTransform: 'none',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    color: tokens.brand.primary,
+                    p: 0.5,
+                    '&:hover': {
+                      bgcolor: isDarkMode ? 'rgba(93, 26, 137, 0.15)' : 'rgba(93, 26, 137, 0.08)',
+                    },
+                  }}
+                >
+                  + Add Description (optional)
+                </Button>
+              ) : null}
+            </Box>
+          </>
+        )}
       </Box>
 
       {/* Sources */}
