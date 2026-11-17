@@ -288,6 +288,10 @@ const AssignmentCard = ({ assignment }: { assignment: SalesKpiAssignment }) => {
                       size="small"
                       required
                       fullWidth
+                      autoComplete="off"
+                      name="salesKpiItemName"
+                      placeholder="e.g. Daily Prospecting Calls"
+                      inputProps={{ autoComplete: 'off' }}
                       value={d.name}
                       onChange={(e) => patch(d.key, { name: e.target.value })}
                       sx={textFieldStyle}
@@ -326,6 +330,10 @@ const AssignmentCard = ({ assignment }: { assignment: SalesKpiAssignment }) => {
                       label="Task name"
                       size="small"
                       required
+                      autoComplete="off"
+                      name="salesKpiItemName"
+                      placeholder="e.g. Daily Prospecting Calls"
+                      inputProps={{ autoComplete: 'off' }}
                       value={d.name}
                       onChange={(e) => patch(d.key, { name: e.target.value })}
                       sx={{ flex: 2, minWidth: 160, ...textFieldStyle }}
