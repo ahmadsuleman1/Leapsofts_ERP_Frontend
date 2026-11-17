@@ -201,7 +201,8 @@ export const setupSocketEventHandlers = (
     queryClient.invalidateQueries({ queryKey: ['salesKpiSummary'] });
   });
 
-  socket.on(SOCKET_EVENTS.MEETING_SYNCED, (data?: { meetingId?: string }) => {
+  socket.on(SOCKET_EVENTS.MEETING_SYNCED, (raw?: unknown) => {
+    const data = raw as { meetingId?: string } | undefined;
     queryClient.invalidateQueries({ queryKey: ['meetings'] });
     queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     queryClient.invalidateQueries({ queryKey: ['leads'] });
@@ -211,7 +212,8 @@ export const setupSocketEventHandlers = (
     }
   });
 
-  socket.on(SOCKET_EVENTS.MEETING_UPDATED, (data?: { meetingId?: string }) => {
+  socket.on(SOCKET_EVENTS.MEETING_UPDATED, (raw?: unknown) => {
+    const data = raw as { meetingId?: string } | undefined;
     queryClient.invalidateQueries({ queryKey: ['meetings'] });
     queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     queryClient.invalidateQueries({ queryKey: ['leads'] });
