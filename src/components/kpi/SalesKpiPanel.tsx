@@ -322,9 +322,7 @@ export const SalesKpiPanel = () => {
                   borderRadius: '16px',
                   bgcolor:
                     selectedTemplateId === 'all'
-                      ? isDarkMode
-                        ? alpha(tokens.brand.primary, 0.16)
-                        : alpha(tokens.brand.primary, 0.08)
+                      ? alpha(theme.palette.primary.main, isDarkMode ? 0.16 : 0.08)
                       : isDarkMode
                       ? 'rgba(30, 27, 36, 0.45)'
                       : '#fff',
@@ -424,9 +422,7 @@ export const SalesKpiPanel = () => {
                           cursor: 'pointer',
                           borderRadius: '16px',
                           bgcolor: isSelected
-                            ? isDarkMode
-                              ? alpha(tokens.brand.primary, 0.16)
-                              : alpha(tokens.brand.primary, 0.08)
+                            ? alpha(theme.palette.primary.main, isDarkMode ? 0.16 : 0.08)
                             : isDarkMode
                             ? 'rgba(30, 27, 36, 0.45)'
                             : '#fff',
