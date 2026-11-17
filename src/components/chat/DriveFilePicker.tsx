@@ -123,7 +123,13 @@ export const DriveFilePicker = ({ open, onClose, onSelect }: DriveFilePickerProp
         driveWebViewLink: file.webViewLink,
         driveIconLink: file.iconLink,
         ...(file.thumbnailLink ? { driveThumbnailLink: file.thumbnailLink } : {}),
-        ...(replyingTo?._id ? { replyTo: replyingTo._id } : {}),
+        ...(replyingTo?._id
+          ? {
+              replyTo:
+                (replyingTo as any)?.originalMessageId ||
+                replyingTo._id.replace(/-(attachment|text)$/, ''),
+            }
+          : {}),
       },
       {
         onSuccess: () => {

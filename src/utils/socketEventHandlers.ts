@@ -389,7 +389,16 @@ export const setupSocketEventHandlers = (
       { queryKey: ['messages', conversationId] },
       (old) =>
         mapMessageCache(old, (messages) =>
-          messages.map((msg) => (msg._id === message._id ? { ...msg, ...message } : msg)),
+          messages.map((msg) => {
+            if (msg._id !== message._id) return msg;
+            const keepReplyTo =
+              typeof message.replyTo === 'object' && message.replyTo !== null
+                ? message.replyTo
+                : typeof msg.replyTo === 'object'
+                  ? msg.replyTo
+                  : message.replyTo;
+            return { ...msg, ...message, ...(keepReplyTo ? { replyTo: keepReplyTo } : {}) };
+          }),
         ),
     );
 
