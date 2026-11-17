@@ -11,6 +11,7 @@ import {
   useTheme,
   FormControlLabel,
   Switch,
+  InputAdornment,
 } from '@mui/material';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CloseOutlinedIcon from '@mui/icons-material/CloseOutlined';
@@ -74,8 +75,15 @@ const FIELD_LABELS: Record<string, string> = {
   itemCount: 'Items',
   itemSummary: 'Item details',
   metric: 'Metric',
+  title: 'Task Title',
+  taskTitle: 'Task Title',
+  description: 'Description',
   board: 'Board',
+  column: 'Column',
   columnId: 'Column',
+  priority: 'Priority',
+  dueDate: 'Due Date',
+  assignedTo: 'Assigned To',
   invoice: 'Invoice',
   effect: 'What happens',
   emailsClient: 'Emails the client',
@@ -117,7 +125,7 @@ const HIDDEN_PROPOSED_KEYS = new Set([
   'cardId',
   'projectId',
   'boardId',
-  'columnId',
+  'column',
   'targetId',
   'userId',
   'clientId',
@@ -294,6 +302,8 @@ export const AiActionPreviewCard = ({
         if (k === 'durationMinutes') {
           const n = Number(editedValues[k]);
           overrides[k] = Number.isFinite(n) ? n : action.proposed.durationMinutes;
+        } else if (k === 'columns' && typeof editedValues[k] === 'string') {
+          overrides[k] = editedValues[k].split(',').map((s) => s.trim()).filter(Boolean);
         } else {
           overrides[k] = editedValues[k];
         }
@@ -545,7 +555,8 @@ export const AiActionPreviewCard = ({
               {isPending && (
                 <Checkbox
                   size="small"
-                  checked={checked}
+                  checked={fieldKey === 'columnId' ? true : checked}
+                  disabled={fieldKey === 'columnId'}
                   onChange={(e) =>
                     setSelectedFields((prev) => ({ ...prev, [fieldKey]: e.target.checked }))
                   }
@@ -565,7 +576,20 @@ export const AiActionPreviewCard = ({
                   >
                     {FIELD_LABELS[fieldKey] || fieldKey}
                   </Typography>
-                  {prevVal ? (
+                  {fieldKey === 'columnId' ? (
+                    <Chip
+                      size="small"
+                      icon={<LockOutlinedIcon sx={{ fontSize: '11px !important' }} />}
+                      label="Locked"
+                      sx={{
+                        height: 16,
+                        fontSize: '0.62rem',
+                        fontWeight: 700,
+                        bgcolor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                        color: 'text.secondary',
+                      }}
+                    />
+                  ) : prevVal ? (
                     <Typography
                       variant="caption"
                       sx={{
@@ -612,7 +636,15 @@ export const AiActionPreviewCard = ({
                   <TextField
                     fullWidth
                     size="small"
-                    disabled={!checked}
+                    disabled={!checked || fieldKey === 'columnId'}
+                    InputProps={{
+                      readOnly: fieldKey === 'columnId',
+                      endAdornment: fieldKey === 'columnId' ? (
+                        <InputAdornment position="end">
+                          <LockOutlinedIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+                        </InputAdornment>
+                      ) : undefined,
+                    }}
                     multiline={
                       fieldKey === 'notes' ||
                       fieldKey === 'description' ||
@@ -638,6 +670,7 @@ export const AiActionPreviewCard = ({
                       '& .MuiInputBase-input': {
                         fontSize: '0.82rem',
                         py: 0.6,
+                        fontFamily: fieldKey === 'columnId' ? 'monospace' : 'inherit',
                       },
                     }}
                   />
