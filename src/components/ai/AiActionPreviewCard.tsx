@@ -211,6 +211,49 @@ const EMAILS_CLIENT = new Set<AiPendingAction['actionType']>([
   'mark_invoice_paid',
 ]);
 
+const DEFAULT_DUE_TIME = '23:59';
+
+const parseDueParts = (iso?: string) => {
+  if (!iso) return { date: '', time: '' };
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    const parts = String(iso).split('T');
+    return { date: parts[0] || '', time: parts[1]?.slice(0, 5) || '' };
+  }
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
+  const time = hasTime ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : DEFAULT_DUE_TIME;
+  return { date, time };
+};
+
+const combineDueDateTime = (dateStr: string, timeStr?: string): string => {
+  if (!dateStr) return '';
+  const time = timeStr?.trim() || DEFAULT_DUE_TIME;
+  return `${dateStr}T${time}:00`;
+};
+
+const formatDueDateTimeDisplay = (val?: string): string => {
+  if (!val) return 'No due date';
+  const { date, time } = parseDueParts(val);
+  if (!date) return 'No due date';
+  const d = new Date(`${date}T${time || DEFAULT_DUE_TIME}:00`);
+  const dateFormatted = d.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  if (!time || time === '23:59') {
+    return `${dateFormatted} (End of day)`;
+  }
+  const timeFormatted = d.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  return `${dateFormatted} • ${timeFormatted}`;
+};
+
 interface AiActionPreviewCardProps {
   action: AiPendingAction;
   onConfirmed?: (action: AiPendingAction, entityResult: unknown) => void;
@@ -743,7 +786,7 @@ export const AiActionPreviewCard = ({
           <>
             {/* Priority & Due Date 2-Column Row */}
             <Grid container spacing={1}>
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12} sm={5}>
                 <Box
                   sx={{
                     display: 'flex',
@@ -803,8 +846,8 @@ export const AiActionPreviewCard = ({
                         }
                         sx={{
                           '& .MuiInputBase-input': {
-                            fontSize: '0.82rem',
-                            py: 0.6,
+                            fontSize: '0.8rem',
+                            py: 0.4,
                             display: 'flex',
                             alignItems: 'center',
                           },
@@ -844,7 +887,7 @@ export const AiActionPreviewCard = ({
                 </Box>
               </Grid>
 
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12} sm={7}>
                 <Box
                   sx={{
                     display: 'flex',
@@ -861,9 +904,17 @@ export const AiActionPreviewCard = ({
                     <Checkbox
                       size="small"
                       checked={Boolean(selectedFields.dueDate)}
-                      onChange={(e) =>
-                        setSelectedFields((prev) => ({ ...prev, dueDate: e.target.checked }))
-                      }
+                      onChange={(e) => {
+                        const isChecked = e.target.checked;
+                        setSelectedFields((prev) => ({ ...prev, dueDate: isChecked }));
+                        if (isChecked && !editedValues.dueDate) {
+                          const d = new Date();
+                          d.setDate(d.getDate() + 1);
+                          const pad = (n: number) => String(n).padStart(2, '0');
+                          const tomorrowDate = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                          setEditedValues((prev) => ({ ...prev, dueDate: combineDueDateTime(tomorrowDate, DEFAULT_DUE_TIME) }));
+                        }
+                      }}
                       sx={{ p: 0.25, mt: 0.25 }}
                     />
                   )}
@@ -893,30 +944,75 @@ export const AiActionPreviewCard = ({
                       />
                     </Box>
                     {isPending ? (
-                      <TextField
-                        type="date"
-                        fullWidth
-                        size="small"
-                        disabled={!selectedFields.dueDate}
-                        InputLabelProps={{ shrink: true }}
-                        value={
-                          editedValues.dueDate
-                            ? editedValues.dueDate.split('T')[0]
-                            : ''
-                        }
-                        onChange={(e) =>
-                          setEditedValues((prev) => ({ ...prev, dueDate: e.target.value }))
-                        }
-                        sx={{
-                          '& .MuiInputBase-input': {
-                            fontSize: '0.82rem',
-                            py: 0.6,
-                          },
-                        }}
-                      />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        <TextField
+                          type="date"
+                          size="small"
+                          disabled={!selectedFields.dueDate}
+                          InputLabelProps={{ shrink: true }}
+                          value={parseDueParts(editedValues.dueDate).date}
+                          onChange={(e) => {
+                            const newDate = e.target.value;
+                            const currentParts = parseDueParts(editedValues.dueDate);
+                            const newCombined = newDate
+                              ? combineDueDateTime(newDate, currentParts.time || DEFAULT_DUE_TIME)
+                              : '';
+                            setEditedValues((prev) => ({ ...prev, dueDate: newCombined }));
+                            if (newDate) {
+                              setSelectedFields((prev) => ({ ...prev, dueDate: true }));
+                            }
+                          }}
+                          onFocus={() => {
+                            if (!selectedFields.dueDate) {
+                              setSelectedFields((prev) => ({ ...prev, dueDate: true }));
+                            }
+                          }}
+                          sx={{
+                            width: 118,
+                            flexShrink: 0,
+                            '& .MuiInputBase-input': {
+                              fontSize: '0.78rem',
+                              py: 0.4,
+                              px: 0.6,
+                            },
+                          }}
+                        />
+                        <TextField
+                          type="time"
+                          size="small"
+                          disabled={!selectedFields.dueDate || !parseDueParts(editedValues.dueDate).date}
+                          InputLabelProps={{ shrink: true }}
+                          value={parseDueParts(editedValues.dueDate).time || DEFAULT_DUE_TIME}
+                          onChange={(e) => {
+                            const newTime = e.target.value;
+                            const currentParts = parseDueParts(editedValues.dueDate);
+                            if (currentParts.date) {
+                              const newCombined = combineDueDateTime(currentParts.date, newTime);
+                              setEditedValues((prev) => ({ ...prev, dueDate: newCombined }));
+                              if (newTime) {
+                                setSelectedFields((prev) => ({ ...prev, dueDate: true }));
+                              }
+                            }
+                          }}
+                          onFocus={() => {
+                            if (!selectedFields.dueDate) {
+                              setSelectedFields((prev) => ({ ...prev, dueDate: true }));
+                            }
+                          }}
+                          sx={{
+                            width: 95,
+                            flexShrink: 0,
+                            '& .MuiInputBase-input': {
+                              fontSize: '0.78rem',
+                              py: 0.4,
+                              px: 0.5,
+                            },
+                          }}
+                        />
+                      </Box>
                     ) : (
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {editedValues.dueDate || 'No due date'}
+                        {formatDueDateTimeDisplay(editedValues.dueDate)}
                       </Typography>
                     )}
                   </Box>
@@ -1051,7 +1147,7 @@ export const AiActionPreviewCard = ({
                     },
                   }}
                 >
-                  + Add Description (optional)
+                  Add Description (optional)
                 </Button>
               ) : null}
             </Box>
