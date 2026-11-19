@@ -201,7 +201,8 @@ export const setupSocketEventHandlers = (
     queryClient.invalidateQueries({ queryKey: ['salesKpiSummary'] });
   });
 
-  socket.on(SOCKET_EVENTS.MEETING_SYNCED, (data: any) => {
+  socket.on(SOCKET_EVENTS.MEETING_SYNCED, (raw?: unknown) => {
+    const data = raw as { meetingId?: string } | undefined;
     queryClient.invalidateQueries({ queryKey: ['meetings'] });
     queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     queryClient.invalidateQueries({ queryKey: ['leads'] });
@@ -211,7 +212,8 @@ export const setupSocketEventHandlers = (
     }
   });
 
-  socket.on(SOCKET_EVENTS.MEETING_UPDATED, (data: any) => {
+  socket.on(SOCKET_EVENTS.MEETING_UPDATED, (raw?: unknown) => {
+    const data = raw as { meetingId?: string } | undefined;
     queryClient.invalidateQueries({ queryKey: ['meetings'] });
     queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     queryClient.invalidateQueries({ queryKey: ['leads'] });
@@ -409,7 +411,16 @@ export const setupSocketEventHandlers = (
       { queryKey: ['messages', conversationId] },
       (old) =>
         mapMessageCache(old, (messages) =>
-          messages.map((msg) => (msg._id === message._id ? { ...msg, ...message } : msg)),
+          messages.map((msg) => {
+            if (msg._id !== message._id) return msg;
+            const keepReplyTo =
+              typeof message.replyTo === 'object' && message.replyTo !== null
+                ? message.replyTo
+                : typeof msg.replyTo === 'object'
+                  ? msg.replyTo
+                  : message.replyTo;
+            return { ...msg, ...message, ...(keepReplyTo ? { replyTo: keepReplyTo } : {}) };
+          }),
         ),
     );
 

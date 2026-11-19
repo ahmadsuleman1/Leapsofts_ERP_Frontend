@@ -366,8 +366,32 @@ const reconcileSentMessageInCache = (
   const currentUserId = useAuthStore.getState().user?._id;
   const existingPending = tempId ? findMessageInCache(old, tempId) : undefined;
   const existingReal = findMessageInCache(old, realMessage._id);
+
+  // Preserve rich replyTo snippet if realMessage only has string ID or lacks details
+  const existingReplyTo =
+    (existingReal?.replyTo && typeof existingReal.replyTo === 'object'
+      ? existingReal.replyTo
+      : undefined) ||
+    (existingPending?.replyTo && typeof existingPending.replyTo === 'object'
+      ? existingPending.replyTo
+      : undefined);
+
+  const finalReplyTo =
+    realMessage.replyTo && typeof realMessage.replyTo === 'object'
+      ? realMessage.replyTo
+      : existingReplyTo || realMessage.replyTo;
+
+  const existingSender = existingReal?.sender || existingPending?.sender;
+  const finalSender = realMessage.sender || existingSender;
+
+  const normalizedReal: Message = {
+    ...realMessage,
+    ...(finalReplyTo ? { replyTo: finalReplyTo } : {}),
+    ...(finalSender ? { sender: finalSender } : {}),
+  };
+
   const mergedWithExisting = mergeMessageReceipts(
-    mergeMessageReceipts(realMessage, existingPending),
+    mergeMessageReceipts(normalizedReal, existingPending),
     existingReal,
   );
 

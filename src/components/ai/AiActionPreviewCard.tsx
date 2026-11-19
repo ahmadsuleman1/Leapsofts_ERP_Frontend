@@ -55,7 +55,23 @@ const FIELD_LABELS: Record<string, string> = {
   companySize: 'Company Size',
   profileUrl: 'LinkedIn URL',
   icp: 'ICP',
+  profile: 'Profile',
   notes: 'Notes',
+  channel: 'Channel',
+  futureLeadDate: 'Future lead date',
+  leadCommentText: 'Invalid-lead comment',
+  leadCommentLevel: 'Comment level',
+  coldCallingOutreachStatus: 'Cold call — dial status',
+  coldCallingResponseStatus: 'Cold call — response',
+  coldCallingFutureLeadAt: 'Cold call — future date',
+  note: 'Follow-up note',
+  number: 'Follow-up #',
+  followUpCount: 'Current follow-up #',
+  name: 'Name',
+  notificationBroadcastEnabled: 'Notification broadcast',
+  automatedUserReportSchedule: 'Automated user reports',
+  notificationPreferences: 'Notification preferences',
+  aiSettings: 'AI defaults',
   connectionStatus: 'Connection Status',
   messageStatus: 'Message Status',
   bio: 'Bio',
@@ -133,6 +149,7 @@ const HIDDEN_PROPOSED_KEYS = new Set([
   'templateId',
   '_id',
   'id',
+  '_leadInput',
   '_settingsPatch',
 ]);
 
@@ -178,12 +195,17 @@ const formatProposedFieldValue = (
     );
     return utcToWallClock(value, tz);
   }
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    return JSON.stringify(value, null, 2);
+  }
   return String(value);
 };
 
 const ACTION_TYPE_TITLES: Record<AiPendingAction['actionType'], string> = {
   enrich_lead: 'AI Lead Enrichment Preview',
+  create_lead: 'Create Lead Proposal',
   update_lead: 'Lead Edit Proposal',
+  log_lead_follow_up: 'Log LinkedIn Follow-up',
   update_user: 'User Profile Edit Proposal',
   create_meeting: 'Meeting Booking Proposal',
   create_kpi: 'Create KPI',
@@ -206,6 +228,13 @@ const ACTION_TYPE_TITLES: Record<AiPendingAction['actionType'], string> = {
   add_project_member: 'Assign Project Member',
   create_kanban_board: 'Create Kanban Board',
   assign_kanban_card: 'Assign Task Card',
+  create_icp: 'Add ICP',
+  rename_icp: 'Rename ICP',
+  remove_icp: 'Remove ICP',
+  create_profile: 'Add sales profile',
+  rename_profile: 'Rename sales profile',
+  remove_profile: 'Remove sales profile',
+  update_org_settings: 'Update organization settings',
 };
 
 const EMAILS_CLIENT = new Set<AiPendingAction['actionType']>([
