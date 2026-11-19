@@ -195,6 +195,12 @@ const formatProposedFieldValue = (
     );
     return utcToWallClock(value, tz);
   }
+  if ((fieldKey === 'client' || fieldKey === 'clientSnapshot') && value !== null && typeof value === 'object') {
+    const c = value as Record<string, unknown>;
+    const name = typeof c.name === 'string' ? c.name : '';
+    const email = typeof c.email === 'string' && c.email ? ` · ${c.email}` : '';
+    return name ? `${name}${email}` : JSON.stringify(value);
+  }
   if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
     return JSON.stringify(value, null, 2);
   }
@@ -751,8 +757,8 @@ export const AiActionPreviewCard = ({
               {isPending && (
                 <Checkbox
                   size="small"
-                  checked={fieldKey === 'columnId' ? true : checked}
-                  disabled={fieldKey === 'columnId'}
+                  checked={(fieldKey === 'columnId' || (isCreateInvoice && fieldKey === 'client')) ? true : checked}
+                  disabled={fieldKey === 'columnId' || (isCreateInvoice && fieldKey === 'client')}
                   onChange={(e) =>
                     setSelectedFields((prev) => ({ ...prev, [fieldKey]: e.target.checked }))
                   }
@@ -772,7 +778,7 @@ export const AiActionPreviewCard = ({
                   >
                     {FIELD_LABELS[fieldKey] || fieldKey}
                   </Typography>
-                  {fieldKey === 'columnId' ? (
+                  {(fieldKey === 'columnId' || (isCreateInvoice && fieldKey === 'client')) ? (
                     <Chip
                       size="small"
                       icon={<LockOutlinedIcon sx={{ fontSize: '11px !important' }} />}
@@ -832,10 +838,10 @@ export const AiActionPreviewCard = ({
                   <TextField
                     fullWidth
                     size="small"
-                    disabled={!checked || fieldKey === 'columnId'}
+                    disabled={!checked || fieldKey === 'columnId' || (isCreateInvoice && fieldKey === 'client')}
                     InputProps={{
-                      readOnly: fieldKey === 'columnId',
-                      endAdornment: fieldKey === 'columnId' ? (
+                      readOnly: fieldKey === 'columnId' || (isCreateInvoice && fieldKey === 'client'),
+                      endAdornment: (fieldKey === 'columnId' || (isCreateInvoice && fieldKey === 'client')) ? (
                         <InputAdornment position="end">
                           <LockOutlinedIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
                         </InputAdornment>
