@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -22,6 +22,9 @@ import CloseOutlinedIcon from '@mui/icons-material/CloseOutlined';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
+import { useUsers } from '@/hooks/api/useUsers';
+import { useInvoices } from '@/hooks/api/useInvoices';
 import {
   useConfirmAiAction,
   useRejectAiAction,
@@ -304,7 +307,83 @@ export const AiActionPreviewCard = ({
       });
   }, [action.actionType, action.proposed]);
 
-  const isTaskCard = action.actionType === 'create_kanban_card';
+  const isTaskCard = action.actionType === 'create_kanban_card' || action.actionType === 'update_kanban_card';
+  const isCreateInvoice = action.actionType === 'create_invoice';
+
+  const invoiceTargetClientId = useMemo(() => {
+    if (!isCreateInvoice) return '';
+    const op = action.proposed?.operation as Record<string, unknown> | undefined;
+    return String(action.proposed?.clientId || op?.clientId || '');
+  }, [isCreateInvoice, action.proposed]);
+
+  const { data: clientInvoices = [] } = useInvoices(
+    undefined,
+    invoiceTargetClientId || undefined,
+  );
+
+  const autoInvoiceNumber = useMemo(() => {
+    if (!isCreateInvoice) return '';
+    const op = action.proposed?.operation as Record<string, unknown> | undefined;
+    const issueDate = String(action.proposed?.issueDate || op?.issueDate || '');
+    const currentYear = new Date(issueDate || Date.now()).getFullYear();
+    let baseNumber = `${currentYear}-001`;
+
+    if (invoiceTargetClientId && Array.isArray(clientInvoices) && clientInvoices.length > 0) {
+      const sorted = [...clientInvoices].sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (dateA !== dateB) return dateB - dateA;
+        return a._id < b._id ? 1 : -1;
+      });
+
+      const latestInvoice = sorted[0];
+      if (latestInvoice && latestInvoice.invoiceNumber) {
+        const match = latestInvoice.invoiceNumber.match(/(\d+)$/);
+        if (match) {
+          const numStr = match[1];
+          const nextNum = parseInt(numStr, 10) + 1;
+          const padding = Math.max(3, numStr.length);
+          baseNumber = `${currentYear}-${String(nextNum).padStart(padding, '0')}`;
+        }
+      }
+    }
+    return baseNumber;
+  }, [isCreateInvoice, invoiceTargetClientId, clientInvoices, action.proposed]);
+
+  const [editedInvoiceNumber, setEditedInvoiceNumber] = useState<string>('');
+
+  useEffect(() => {
+    if (autoInvoiceNumber && !editedInvoiceNumber) {
+      setEditedInvoiceNumber(autoInvoiceNumber);
+    }
+  }, [autoInvoiceNumber, editedInvoiceNumber]);
+
+  const { data: dbUsers = [] } = useUsers({}, { enabled: isTaskCard });
+
+  const initialAssigneeId = useMemo(() => {
+    if (!isTaskCard) return '';
+    const op = action.proposed?.operation as Record<string, unknown> | undefined;
+    if (Array.isArray(op?.assignedTo) && op.assignedTo.length > 0) {
+      return String(op.assignedTo[0]);
+    }
+    const propName = String(action.proposed?.assignedTo || '').trim().toLowerCase();
+    if (propName && propName !== 'unassigned') {
+      const match = dbUsers.find((u) => {
+        const full = `${u.firstName || ''} ${u.lastName || ''}`.trim().toLowerCase();
+        return full === propName || (u.email || '').toLowerCase() === propName;
+      });
+      if (match) return match._id;
+    }
+    return '';
+  }, [isTaskCard, action.proposed, dbUsers]);
+
+  const [editedAssigneeId, setEditedAssigneeId] = useState<string>('');
+
+  useMemo(() => {
+    if (initialAssigneeId && !editedAssigneeId) {
+      setEditedAssigneeId(initialAssigneeId);
+    }
+  }, [initialAssigneeId, editedAssigneeId]);
 
   const [showDescription, setShowDescription] = useState<boolean>(() => {
     return Boolean(action.proposed?.description && String(action.proposed.description).trim().length > 0);
@@ -313,7 +392,7 @@ export const AiActionPreviewCard = ({
   const standardEntries = useMemo(() => {
     if (isTaskCard) {
       return proposedEntries.filter(
-        ([k]) => k !== 'priority' && k !== 'dueDate' && k !== 'description',
+        ([k]) => k !== 'priority' && k !== 'dueDate' && k !== 'description' && k !== 'assignedTo',
       );
     }
     return proposedEntries;
@@ -335,6 +414,7 @@ export const AiActionPreviewCard = ({
       initial.priority = true;
       initial.dueDate = Boolean(action.proposed?.dueDate);
       initial.description = Boolean(action.proposed?.description && String(action.proposed.description).trim().length > 0);
+      initial.assignedTo = Boolean(action.proposed?.assignedTo || (action.proposed?.operation as Record<string, unknown> | undefined)?.assignedTo);
     }
     return initial;
   });
@@ -365,6 +445,7 @@ export const AiActionPreviewCard = ({
     const overrides: Record<string, unknown> = {};
     for (const [k] of proposedEntries) {
       if (selectedFields[k]) {
+        if (isCreateInvoice && k === 'client') continue;
         if (k === 'durationMinutes') {
           const n = Number(editedValues[k]);
           overrides[k] = Number.isFinite(n) ? n : action.proposed.durationMinutes;
@@ -384,6 +465,15 @@ export const AiActionPreviewCard = ({
       }
       if (selectedFields.description && editedValues.description?.trim()) {
         overrides.description = editedValues.description.trim();
+      }
+      if (selectedFields.assignedTo) {
+        overrides.assignedTo = editedAssigneeId ? [editedAssigneeId] : [];
+      }
+    }
+    if (isCreateInvoice) {
+      const finalNum = (editedInvoiceNumber || autoInvoiceNumber).trim();
+      if (finalNum) {
+        overrides.invoiceNumber = finalNum;
       }
     }
     if (action.actionType === 'create_meeting' && action.proposed.participants) {
@@ -782,6 +872,72 @@ export const AiActionPreviewCard = ({
           );
         })}
 
+        {isCreateInvoice && (
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 1,
+              p: 1,
+              borderRadius: '10px',
+              bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+              border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+            }}
+          >
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    color: 'text.secondary',
+                  }}
+                >
+                  Invoice Number
+                </Typography>
+                <Chip
+                  size="small"
+                  label={isPending ? 'Auto-generated' : 'Assigned'}
+                  sx={{
+                    height: 16,
+                    fontSize: '0.62rem',
+                    fontWeight: 700,
+                    bgcolor: 'rgba(45, 138, 94, 0.12)',
+                    color: tokens.semantic.success,
+                  }}
+                />
+              </Box>
+              {isPending ? (
+                <TextField
+                  fullWidth
+                  size="small"
+                  value={editedInvoiceNumber}
+                  onChange={(e) => setEditedInvoiceNumber(e.target.value)}
+                  placeholder="e.g. 2026-001"
+                  helperText="Auto-generated by frontend. You can adjust it before approving."
+                  sx={{
+                    '& .MuiInputBase-input': {
+                      fontSize: '0.8rem',
+                      py: 0.5,
+                      fontWeight: 600,
+                    },
+                    '& .MuiFormHelperText-root': {
+                      fontSize: '0.68rem',
+                      mt: 0.3,
+                    },
+                  }}
+                />
+              ) : (
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {String(action.applied?.invoiceNumber || action.proposed?.invoiceNumber || editedInvoiceNumber || '—')}
+                </Typography>
+              )}
+            </Box>
+          </Box>
+        )}
+
         {isTaskCard && (
           <>
             {/* Priority & Due Date 2-Column Row */}
@@ -1013,6 +1169,114 @@ export const AiActionPreviewCard = ({
                     ) : (
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {formatDueDateTimeDisplay(editedValues.dueDate)}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              </Grid>
+
+              {/* Row 2: Assignee (Priority jitna) */}
+              <Grid item xs={12} sm={5}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 1,
+                    p: 1,
+                    height: '100%',
+                    borderRadius: '10px',
+                    bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+                    border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                  }}
+                >
+                  {isPending && (
+                    <Checkbox
+                      size="small"
+                      checked={Boolean(selectedFields.assignedTo)}
+                      onChange={(e) =>
+                        setSelectedFields((prev) => ({ ...prev, assignedTo: e.target.checked }))
+                      }
+                      sx={{ p: 0.25, mt: 0.25 }}
+                    />
+                  )}
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontWeight: 800,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                          color: 'text.secondary',
+                        }}
+                      >
+                        Assignee
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label={editedAssigneeId ? 'Assigned' : 'Empty'}
+                        sx={{
+                          height: 16,
+                          fontSize: '0.62rem',
+                          fontWeight: 700,
+                          bgcolor: editedAssigneeId ? 'rgba(45, 138, 94, 0.12)' : (isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
+                          color: editedAssigneeId ? tokens.semantic.success : 'text.secondary',
+                        }}
+                      />
+                    </Box>
+                    {isPending ? (
+                      <TextField
+                        select
+                        fullWidth
+                        size="small"
+                        disabled={!selectedFields.assignedTo}
+                        value={editedAssigneeId}
+                        onChange={(e) => {
+                          setEditedAssigneeId(e.target.value);
+                          setSelectedFields((prev) => ({ ...prev, assignedTo: true }));
+                        }}
+                        sx={{
+                          '& .MuiInputBase-input': {
+                            fontSize: '0.8rem',
+                            py: 0.4,
+                            display: 'flex',
+                            alignItems: 'center',
+                          },
+                        }}
+                      >
+                        <MenuItem value="">
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary' }}>
+                            <PersonOutlineIcon sx={{ fontSize: 16 }} />
+                            <span>Unassigned (Empty)</span>
+                          </Box>
+                        </MenuItem>
+                        {dbUsers.map((u) => {
+                          const name = [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email || 'User';
+                          return (
+                            <MenuItem key={u._id} value={u._id}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <PersonOutlineIcon sx={{ fontSize: 16, color: 'primary.main', flexShrink: 0 }} />
+                                <span>{name}</span>
+                              </Box>
+                            </MenuItem>
+                          );
+                        })}
+                      </TextField>
+                    ) : (
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 600,
+                        }}
+                        title={
+                          dbUsers.find((u) => u._id === editedAssigneeId)
+                            ? [dbUsers.find((u) => u._id === editedAssigneeId)?.firstName, dbUsers.find((u) => u._id === editedAssigneeId)?.lastName].filter(Boolean).join(' ').trim() || 'Assigned'
+                            : action.proposed?.assignedTo ? String(action.proposed.assignedTo) : 'Unassigned'
+                        }
+                      >
+                        {dbUsers.find((u) => u._id === editedAssigneeId)
+                          ? [dbUsers.find((u) => u._id === editedAssigneeId)?.firstName, dbUsers.find((u) => u._id === editedAssigneeId)?.lastName].filter(Boolean).join(' ').trim() || 'Assigned'
+                          : action.proposed?.assignedTo ? String(action.proposed.assignedTo) : 'Unassigned'}
                       </Typography>
                     )}
                   </Box>
