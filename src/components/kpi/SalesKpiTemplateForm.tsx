@@ -253,7 +253,7 @@ export const SalesKpiTemplateForm = ({ open, onClose, template }: Props) => {
       </DialogTitle>
 
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: '16px !important', px: { xs: 2, sm: 3 }, flex: isMobile ? 1 : undefined, overflowY: 'auto', overflowX: 'hidden' }}>
-        <TextField label="Template name" value={name} onChange={(e) => setName(e.target.value)} fullWidth required sx={textFieldStyle} />
+        <TextField label="Template name" value={name} onChange={(e) => setName(e.target.value)} fullWidth required autoComplete="off" sx={textFieldStyle} />
         <TextField label="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} fullWidth multiline rows={2} sx={textFieldStyle} />
 
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', p: 1.5, borderRadius: '12px', bgcolor: isDarkMode ? 'rgba(93, 26, 137, 0.1)' : 'rgba(93, 26, 137, 0.05)' }}>
@@ -305,6 +305,10 @@ export const SalesKpiTemplateForm = ({ open, onClose, template }: Props) => {
                     onChange={(e) => patchItem(index, { name: e.target.value })}
                     required
                     size="small"
+                    autoComplete="off"
+                    name="salesKpiItemName"
+                    placeholder="e.g. Daily Prospecting Calls"
+                    inputProps={{ autoComplete: 'off' }}
                     fullWidth={isMobile}
                     sx={{ flex: { sm: 2 }, minWidth: { sm: 200 }, ...textFieldStyle }}
                   />
