@@ -21,6 +21,7 @@ export const usePermissions = () => {
       canManageSalesSettings: flags.manageSalesSettings,
       canViewSystemSettings: flags.manageSystemSettings || flags.manageSalesSettings,
       canViewSalesPage: flags.viewSalesPage,
+      canAccessAllOrgLeads: flags.accessAllOrgLeads,
       canAccessTeam: flags.accessTeam,
       canViewAllAttendance: flags.viewAllAttendance,
       canCreateProjectsAndBoards: flags.createProjectsAndBoards,

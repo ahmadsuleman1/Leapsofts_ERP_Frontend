@@ -3,6 +3,7 @@ import type { Role, UserPermissions } from '@/types';
 
 export const PERMISSION_KEYS = [
   'viewSalesPage',
+  'accessAllOrgLeads',
   'accessTeam',
   'viewAllAttendance',
   'manageSystemSettings',
@@ -18,6 +19,7 @@ const PERMISSION_ENTITLEMENT: Partial<
   Record<PermissionKey, 'salesModule' | 'projectsAndBoards' | 'invoicingModule'>
 > = {
   viewSalesPage: 'salesModule',
+  accessAllOrgLeads: 'salesModule',
   manageSalesSettings: 'salesModule',
   createProjectsAndBoards: 'projectsAndBoards',
   accessInvoicing: 'invoicingModule',
@@ -38,6 +40,7 @@ export const isPermissionOffered = (
 
 export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   viewSalesPage: 'View Sales page',
+  accessAllOrgLeads: 'Access all organization leads',
   accessTeam: 'Access Team page',
   viewAllAttendance: 'View all attendance',
   manageSystemSettings: 'Manage system settings',
@@ -51,6 +54,7 @@ export const DEFAULT_SHIFT_END = '17:00';
 
 export const emptyPermissions = (): UserPermissions => ({
   viewSalesPage: false,
+  accessAllOrgLeads: false,
   accessTeam: false,
   viewAllAttendance: false,
   manageSystemSettings: false,

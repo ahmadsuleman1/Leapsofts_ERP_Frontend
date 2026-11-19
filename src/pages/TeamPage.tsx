@@ -500,8 +500,13 @@ const AccessPermissionsFields = ({
       </Typography>
       <FormGroup>
         {visibleKeys.map((key) => {
+          if (key === 'accessAllOrgLeads') return null;
           const locked = isPermissionLocked(role, department, key);
           const helper = permissionLockHelperText(role, department, key);
+          const isViewSalesPage = key === 'viewSalesPage';
+          const canShowSubtask = isViewSalesPage && visibleKeys.includes('accessAllOrgLeads');
+          const isParentSalesPageActive = Boolean(resolved.viewSalesPage);
+
           return (
             <Box key={key} sx={{ mb: 0.25 }}>
               <FormControlLabel
@@ -510,12 +515,17 @@ const AccessPermissionsFields = ({
                     size="small"
                     checked={resolved[key]}
                     disabled={locked}
-                    onChange={(e) =>
-                      onChange({
+                    onChange={(e) => {
+                      const nextChecked = e.target.checked;
+                      const nextPerms = {
                         ...coercePermissions(permissions),
-                        [key]: e.target.checked,
-                      })
-                    }
+                        [key]: nextChecked,
+                      };
+                      if (isViewSalesPage && !nextChecked) {
+                        nextPerms.accessAllOrgLeads = false;
+                      }
+                      onChange(nextPerms);
+                    }}
                   />
                 }
                 label={
@@ -526,6 +536,37 @@ const AccessPermissionsFields = ({
               />
               {locked && helper && (
                 <FormHelperText sx={{ mt: -0.75, ml: 4, mb: 0.5 }}>{helper}</FormHelperText>
+              )}
+              {canShowSubtask && (
+                <Box sx={{ ml: 3.5, mt: 0.25, mb: 0.5 }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={Boolean(resolved.accessAllOrgLeads && isParentSalesPageActive)}
+                        disabled={!isParentSalesPageActive || isPermissionLocked(role, department, 'accessAllOrgLeads')}
+                        onChange={(e) =>
+                          onChange({
+                            ...coercePermissions(permissions),
+                            accessAllOrgLeads: e.target.checked,
+                          })
+                        }
+                      />
+                    }
+                    label={
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 500,
+                          fontSize: '0.82rem',
+                          color: isParentSalesPageActive ? 'text.primary' : 'text.disabled',
+                        }}
+                      >
+                        {PERMISSION_LABELS.accessAllOrgLeads}
+                      </Typography>
+                    }
+                  />
+                </Box>
               )}
             </Box>
           );
