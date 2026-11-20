@@ -105,7 +105,8 @@ export const SalesPage = () => {
   useMe(); // Fetch and hydrate store with latest profile data on mount
   const muiTheme = useTheme();
   const isDarkMode = muiTheme.palette.mode === 'dark';
-  const { isElevated } = usePermissions();
+  const { isElevated, canAccessAllOrgLeads } = usePermissions();
+  const canFilterByUser = isElevated || canAccessAllOrgLeads;
   const qualifyLead = useQualifyLead();
   const disqualifyLead = useDisqualifyLead();
   const addToast = useUIStore((s) => s.addToast);
@@ -340,9 +341,9 @@ export const SalesPage = () => {
   const { data: usersData } = useUsers();
   const usersList = useMemo(() => {
     return (usersData || []).filter((u: any) => {
-      if (u.role === 'admin') return true;
+      if (u.role === 'admin' || u.role === 'manager' || u.department === 'sales') return true;
       const perms = resolvePermissions(u.role, u.department, u.permissions);
-      return perms.viewSalesPage === true;
+      return perms.viewSalesPage === true || perms.accessAllOrgLeads === true;
     });
   }, [usersData]);
   const { data: icpsData } = useIcps();
@@ -1759,8 +1760,8 @@ export const SalesPage = () => {
 
 
 
-            {/* User Search Autocomplete - Admin Only */}
-            {isElevated && (
+            {/* User Search Autocomplete - Admin & Users with accessAllOrgLeads */}
+            {canFilterByUser && (
               <Autocomplete
                 options={[{ _id: 'All Users', label: 'All Users' }, ...usersList.map((u: any) => ({ _id: u._id, label: `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email }))]}
                 getOptionLabel={(option) => option.label || ''}
