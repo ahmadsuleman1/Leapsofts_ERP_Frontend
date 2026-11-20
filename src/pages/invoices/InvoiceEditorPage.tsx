@@ -40,7 +40,7 @@ import { useInvoiceLeave } from '@/components/invoices/InvoiceLeaveGuard';
 import { InvoiceTemplatePicker, InvoiceTemplatePreview, type InvoicePreviewData } from '@/components/invoices/InvoiceTemplatePreview';
 import { InvoiceSendConfirmModal } from '@/components/invoices/InvoiceSendConfirmModal';
 import { InvoiceDisputeModal } from '@/components/invoices/InvoiceDisputeModal';
-import { useInvoice, useInvoiceClients, useInvoiceMutations, useInvoiceSettings, useInvoices, checkInvoiceNumberApi } from '@/hooks/api/useInvoices';
+import { useInvoice, useInvoiceClients, useInvoiceMutations, useInvoiceSettings, useInvoices, checkInvoiceNumberApi, getNextInvoiceNumberApi } from '@/hooks/api/useInvoices';
 import { showApiError, useApiErrorToast } from '@/utils/apiError';
 import { useUIStore } from '@/store/useUIStore';
 
@@ -235,6 +235,15 @@ const InvoiceEditorPage = () => {
       const nextClientId = match?._id || '';
       const nextInvoiceNumber = generateNextInvoiceNumber(nextClientId, issueDate);
       setInvoiceNumber(nextInvoiceNumber);
+      if (nextClientId) {
+        getNextInvoiceNumberApi(nextClientId, issueDate)
+          .then((serverNum) => {
+            if (serverNum) {
+              setInvoiceNumber((prev) => (!prev || prev === nextInvoiceNumber ? serverNum : prev));
+            }
+          })
+          .catch(() => {});
+      }
       setTemplateId(nextTemplate);
       setTaxRate(nextTax);
       setClientId(nextClientId);
@@ -322,6 +331,15 @@ const InvoiceEditorPage = () => {
     if (isNew) {
       const nextInvoiceNumber = generateNextInvoiceNumber(nextId, issueDate);
       setInvoiceNumber(nextInvoiceNumber);
+      if (nextId) {
+        getNextInvoiceNumberApi(nextId, issueDate)
+          .then((serverNum) => {
+            if (serverNum) {
+              setInvoiceNumber((prev) => (!prev || prev === nextInvoiceNumber ? serverNum : prev));
+            }
+          })
+          .catch(() => {});
+      }
     }
   };
 
