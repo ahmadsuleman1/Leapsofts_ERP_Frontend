@@ -196,6 +196,7 @@ const DashboardPage = () => {
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 3,
+            overflow: 'hidden',
             transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
             '&:hover': {
               boxShadow: '0 12px 36px rgba(26, 22, 37, 0.04), 0 1px 4px rgba(26, 22, 37, 0.02)',
@@ -204,7 +205,7 @@ const DashboardPage = () => {
             }
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.2, width: { xs: '100%', sm: 'auto' } }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.2, flex: 1, minWidth: 0, width: { xs: '100%', sm: 'auto' } }}>
             {/* Camera Icon in Soft circular gradient background */}
             <Box
               sx={{
@@ -224,7 +225,7 @@ const DashboardPage = () => {
             >
               <VideocamOutlinedIcon sx={{ fontSize: 26 }} />
             </Box>
-            <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
               <Typography 
                 variant="caption" 
                 sx={{ 
@@ -241,13 +242,18 @@ const DashboardPage = () => {
               </Typography>
               <Typography 
                 variant="h6" 
+                title={upcomingMeeting.title}
                 sx={{ 
                   fontWeight: 700, 
                   fontSize: '1rem', 
                   color: isDarkMode ? '#fff' : tokens.text.primary,
-                  letterSpacing: '-0.01em'
+                  letterSpacing: '-0.01em',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  display: 'block',
+                  maxWidth: '100%',
                 }}
-                noWrap
               >
                 {upcomingMeeting.title}
               </Typography>
@@ -261,7 +267,8 @@ const DashboardPage = () => {
               alignItems: 'center', 
               gap: { xs: 1.5, sm: 3.5 }, 
               width: { xs: '100%', sm: 'auto' },
-              justifyContent: { xs: 'space-between', sm: 'flex-end' }
+              justifyContent: { xs: 'space-between', sm: 'flex-end' },
+              flexShrink: 0,
             }}
           >
             {/* Live Countdown Timer with Soft digit blocks */}
