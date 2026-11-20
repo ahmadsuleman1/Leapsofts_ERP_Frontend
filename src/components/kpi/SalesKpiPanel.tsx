@@ -409,11 +409,24 @@ export const SalesKpiPanel = () => {
               )}
             </Paper>
           ) : (
-            <Grid container spacing={2.5}>
+            <Box
+              sx={{
+                columnCount: { xs: 1, md: 2 },
+                columnGap: 2.5,
+              }}
+            >
               {filteredTemplates.map((template) => {
                 const count = assigneeCounts.get(template._id) ?? 0;
                 return (
-                  <Grid item xs={12} md={6} key={template._id}>
+                  <Box
+                    key={template._id}
+                    sx={{
+                      breakInside: 'avoid',
+                      display: 'inline-block',
+                      width: '100%',
+                      mb: 2.5,
+                    }}
+                  >
                     <Card
                       sx={{
                         p: 2.5,
@@ -423,7 +436,7 @@ export const SalesKpiPanel = () => {
                         boxShadow: isDarkMode ? 'none' : '0 2px 12px rgba(0,0,0,0.03)',
                         display: 'flex',
                         flexDirection: 'column',
-                        height: '100%',
+                        height: 'auto',
                         transition: 'all 0.2s ease',
                         '&:hover': {
                           borderColor: tokens.brand.primary,
@@ -470,7 +483,7 @@ export const SalesKpiPanel = () => {
                       >
                         KPI Rules ({template.items?.length ?? 0})
                       </Typography>
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, mb: 2 }}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
                         {(template.items ?? []).map((item, idx) => (
                           <Box
                             key={item._id ?? idx}
@@ -479,37 +492,40 @@ export const SalesKpiPanel = () => {
                               borderRadius: '12px',
                               bgcolor: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
                               display: 'flex',
-                              flexWrap: 'wrap',
-                              alignItems: 'center',
-                              gap: 1,
+                              flexDirection: 'column',
+                              gap: 0.75,
                             }}
                           >
-                            <Typography variant="body2" sx={{ fontWeight: 750, minWidth: 120 }}>
-                              {item.name}
-                            </Typography>
-                            <Chip
-                              label={SALES_KPI_METRIC_LABELS[item.metric] ?? item.metric}
-                              size="small"
-                              sx={{
-                                height: 20,
-                                fontSize: '0.68rem',
-                                fontWeight: 700,
-                                bgcolor: 'rgba(93, 26, 137, 0.08)',
-                                color: tokens.brand.primary,
-                              }}
-                            />
-                            <Chip
-                              label={item.scheduleMode === 'span' ? 'Single task' : 'Per day'}
-                              size="small"
-                              sx={{ height: 20, fontSize: '0.68rem', fontWeight: 700 }}
-                            />
-                            <PriorityBadge priority={item.priority} />
-                            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                              {formatWeekdays(item.daysOfWeek)}
-                            </Typography>
-                            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                              · {item.targetMode === 'manual' ? `Target: ${item.targetValue ?? '—'}` : 'Pipeline target'}
-                            </Typography>
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 750, minWidth: 120 }}>
+                                {item.name}
+                              </Typography>
+                              <Chip
+                                label={SALES_KPI_METRIC_LABELS[item.metric] ?? item.metric}
+                                size="small"
+                                sx={{
+                                  height: 20,
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  bgcolor: 'rgba(93, 26, 137, 0.08)',
+                                  color: tokens.brand.primary,
+                                }}
+                              />
+                              <Chip
+                                label={item.scheduleMode === 'span' ? 'Single task' : 'Per day'}
+                                size="small"
+                                sx={{ height: 20, fontSize: '0.68rem', fontWeight: 700 }}
+                              />
+                              <PriorityBadge priority={item.priority} />
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                              <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                                {formatWeekdays(item.daysOfWeek)}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                                · {item.targetMode === 'manual' ? `Target: ${item.targetValue ?? '—'}` : 'Pipeline target'}
+                              </Typography>
+                            </Box>
                           </Box>
                         ))}
                       </Box>
@@ -564,10 +580,10 @@ export const SalesKpiPanel = () => {
                         </Box>
                       </Box>
                     </Card>
-                  </Grid>
+                  </Box>
                 );
               })}
-            </Grid>
+            </Box>
           )}
         </Box>
       )}
