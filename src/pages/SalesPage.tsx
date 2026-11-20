@@ -341,9 +341,9 @@ export const SalesPage = () => {
   const { data: usersData } = useUsers();
   const usersList = useMemo(() => {
     return (usersData || []).filter((u: any) => {
-      if (u.role === 'admin' || u.role === 'manager' || u.department === 'sales') return true;
+      if (u.role === 'admin') return true;
       const perms = resolvePermissions(u.role, u.department, u.permissions);
-      return perms.viewSalesPage === true || perms.accessAllOrgLeads === true;
+      return perms.viewSalesPage === true;
     });
   }, [usersData]);
   const { data: icpsData } = useIcps();
