@@ -47,6 +47,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import TimelineOutlinedIcon from '@mui/icons-material/TimelineOutlined';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 
 import { tokens, connectionStatusTokens, messageStatusTokens, coldOutreachStatusTokens, coldResponseStatusTokens } from '@/styles/tokens';
 import { PipelineRowSkeleton, SalesTableSkeleton } from '@/components/page-skeletons/PageSkeletons';
@@ -61,6 +62,7 @@ import {
 } from '@/hooks/useLeadAutoSync';
 import { useSalesPipelineStats } from '@/hooks/api/useConnections';
 import { useAuth } from '@/hooks/useAuth';
+import { useEntitlements } from '@/hooks/useEntitlements';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useUIStore } from '@/store/useUIStore';
 import StarIcon from '@mui/icons-material/Star';
@@ -268,6 +270,8 @@ export const SalesPage = () => {
   const activeTab = 'prospects'; // Pipeline tab removed per user request
 
   const { user, isAdmin } = useAuth();
+  const entitlements = useEntitlements();
+  const canExportLeads = isAdmin && entitlements.leadDataExport;
   const [outreachChannel, setOutreachChannel] = useState<OutreachChannel>('linkedin');
 
   useEffect(() => {
@@ -2205,7 +2209,7 @@ export const SalesPage = () => {
                   </Button>
                   </>
                 )}
-                {isAdmin && (
+                {canExportLeads && (
                   <Button
                     variant="outlined"
                     startIcon={<FileDownloadOutlinedIcon sx={{ fontSize: 16 }} />}
@@ -2946,6 +2950,29 @@ export const SalesPage = () => {
               }}
               rowsPerPageOptions={[10, 20, 50, 100]}
               labelRowsPerPage={typeof window !== 'undefined' && window.innerWidth < 600 ? 'Rows:' : 'Rows per page:'}
+              SelectProps={{
+                IconComponent: (iconProps: React.ComponentProps<typeof ArrowDropDownIcon>) => (
+                  <ArrowDropDownIcon
+                    {...iconProps}
+                    onMouseDown={(e: React.MouseEvent<SVGSVGElement>) => {
+                      iconProps.onMouseDown?.(e);
+                      const container = e.currentTarget.closest('.MuiInputBase-root') || e.currentTarget.parentElement;
+                      const selectEl = container?.querySelector('.MuiSelect-select') as HTMLElement | null;
+                      if (selectEl) {
+                        selectEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+                      }
+                    }}
+                    onClick={(e: React.MouseEvent<SVGSVGElement>) => {
+                      iconProps.onClick?.(e);
+                      const container = e.currentTarget.closest('.MuiInputBase-root') || e.currentTarget.parentElement;
+                      const selectEl = container?.querySelector('.MuiSelect-select') as HTMLElement | null;
+                      if (selectEl && selectEl.getAttribute('aria-expanded') !== 'true') {
+                        selectEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+                      }
+                    }}
+                  />
+                ),
+              }}
               sx={{
                 mt: 1.5,
                 borderTop: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)'}`,
@@ -2966,11 +2993,27 @@ export const SalesPage = () => {
                   fontSize: { xs: '0.74rem', sm: '0.82rem' },
                   m: 0,
                 },
-                '& .MuiTablePagination-select': {
+                '& .MuiTablePagination-selectRoot': {
+                  cursor: 'pointer',
+                  p: '0 !important',
+                },
+                '& .MuiSelect-select.MuiTablePagination-select': {
                   fontWeight: 600,
                   fontSize: { xs: '0.74rem', sm: '0.82rem' },
                   pl: { xs: 0.5, sm: 1 },
-                  pr: { xs: '18px !important', sm: '24px !important' },
+                  pr: { xs: '24px !important', sm: '28px !important' },
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                },
+                '& .MuiTablePagination-selectIcon': {
+                  cursor: 'pointer',
+                  pointerEvents: 'auto',
+                  color: 'text.secondary',
+                  right: { xs: 0, sm: 2 },
+                  '&:hover': {
+                    color: 'text.primary',
+                  },
                 },
                 '& .MuiTablePagination-displayedRows': {
                   fontWeight: 600,
@@ -3153,7 +3196,7 @@ export const SalesPage = () => {
           />
         </>
       )}
-      {isAdmin && (
+      {canExportLeads && (
         <ExportLeadsDialog
           open={exportOpen}
           onClose={() => setExportOpen(false)}
