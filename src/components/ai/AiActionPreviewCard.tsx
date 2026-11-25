@@ -15,6 +15,7 @@ import {
   IconButton,
   Grid,
   MenuItem,
+  Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
@@ -105,6 +106,7 @@ const FIELD_LABELS: Record<string, string> = {
   itemSummary: 'Item details',
   metric: 'Metric',
   taskTitle: 'Task Title',
+  parentTask: 'Parent Task',
   board: 'Board',
   column: 'Column',
   columnId: 'Column',
@@ -146,13 +148,18 @@ const HIDDEN_PROPOSED_KEYS = new Set([
   'items',
   // Immutable system IDs:
   'cardId',
+  'subtaskId',
   'projectId',
   'boardId',
-  'column',
   'targetId',
   'userId',
   'clientId',
   'templateId',
+  'meetingId',
+  'reportId',
+  'leadId',
+  'teamId',
+  'invoiceId',
   '_id',
   'id',
   '_leadInput',
@@ -175,6 +182,13 @@ const formatProposedFieldValue = (
   }
   if (fieldKey === 'itemSummary' && Array.isArray(value)) {
     return value.map((line) => String(line)).join('\n');
+  }
+  if (
+    (fieldKey === 'columnId' || fieldKey.endsWith('Id')) &&
+    typeof value === 'string' &&
+    /^[0-9a-fA-F]{24}$/.test(value.trim())
+  ) {
+    return `#${value.trim().slice(-4)}`;
   }
   if (isArrayOfObjects(value)) {
     const rows = value as Array<Record<string, unknown>>;
@@ -244,6 +258,9 @@ const ACTION_TYPE_TITLES: Record<AiPendingAction['actionType'], string> = {
   create_kanban_card: 'Create board card',
   move_kanban_card: 'Move board card',
   update_kanban_card: 'Update board card',
+  create_kanban_subtask: 'Create Subtask',
+  update_kanban_subtask: 'Update Subtask',
+  assign_kanban_subtask: 'Assign Subtask',
   create_project: 'Create Project',
   update_project: 'Update Project',
   add_project_member: 'Assign Project Member',
@@ -459,8 +476,14 @@ export const AiActionPreviewCard = ({
       });
   }, [action.actionType, action.proposed]);
 
-  const isTaskCard = action.actionType === 'create_kanban_card' || action.actionType === 'update_kanban_card';
-  const isAssignTaskCard = action.actionType === 'assign_kanban_card';
+  const isTaskCard =
+    action.actionType === 'create_kanban_card' ||
+    action.actionType === 'update_kanban_card' ||
+    action.actionType === 'create_kanban_subtask' ||
+    action.actionType === 'update_kanban_subtask';
+  const isAssignTaskCard =
+    action.actionType === 'assign_kanban_card' ||
+    action.actionType === 'assign_kanban_subtask';
   const isAddProjectMember = action.actionType === 'add_project_member';
   const isQualifyLead = action.actionType === 'qualify_lead';
   const isLeadComment = action.actionType === 'add_lead_comment' || action.actionType === 'update_lead_comment';
@@ -794,6 +817,7 @@ export const AiActionPreviewCard = ({
         continue;
       }
       if (selectedFields[k]) {
+        if (k === 'columnId') continue;
         if (isCreateInvoice && k === 'client') continue;
         if (k === 'durationMinutes') {
           const n = Number(editedValues[k]);
@@ -964,46 +988,52 @@ export const AiActionPreviewCard = ({
       </Box>
 
       {/* Target / Task ID badge (locked / immutable) */}
-      {Boolean(action.targetId || action.proposed?.cardId) && (
-        <Box
-          sx={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 0.75,
-            px: 1,
-            py: 0.25,
-            borderRadius: '6px',
-            bgcolor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-            border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`,
-            width: 'fit-content',
-            mb: 1.25,
-          }}
-        >
-          <LockOutlinedIcon sx={{ fontSize: 13, color: 'text.secondary' }} />
-          <Typography
-            variant="caption"
-            sx={{
-              fontFamily: 'monospace',
-              fontWeight: 600,
-              color: 'text.secondary',
-              fontSize: '0.73rem',
-            }}
-          >
-            ID: {String(action.targetId || action.proposed?.cardId)}
-          </Typography>
-          <Chip
-            size="small"
-            label="Locked"
-            sx={{
-              height: 16,
-              fontSize: '0.6rem',
-              fontWeight: 700,
-              bgcolor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-              color: 'text.secondary',
-            }}
-          />
-        </Box>
-      )}
+      {Boolean(action.targetId || action.proposed?.cardId) && (() => {
+        const fullId = String(action.targetId || action.proposed?.cardId);
+        const shortId = fullId.length > 6 ? `#${fullId.slice(-4)}` : fullId;
+        return (
+          <Tooltip title={`Full ID: ${fullId}`} arrow>
+            <Box
+              sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 0.75,
+                px: 1,
+                py: 0.25,
+                borderRadius: '6px',
+                bgcolor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'}`,
+                width: 'fit-content',
+                mb: 1.25,
+              }}
+            >
+              <LockOutlinedIcon sx={{ fontSize: 13, color: 'text.secondary' }} />
+              <Typography
+                variant="caption"
+                sx={{
+                  fontFamily: 'monospace',
+                  fontWeight: 600,
+                  color: 'text.secondary',
+                  fontSize: '0.73rem',
+                }}
+              >
+                ID: {shortId}
+              </Typography>
+              <Chip
+                size="small"
+                label="Locked"
+                sx={{
+                  height: 16,
+                  fontSize: '0.6rem',
+                  fontWeight: 700,
+                  bgcolor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+                  color: 'text.secondary',
+                }}
+              />
+            </Box>
+          </Tooltip>
+        );
+      })()}
 
       {action.actionType === 'create_meeting' && isPending && (
         <Box
