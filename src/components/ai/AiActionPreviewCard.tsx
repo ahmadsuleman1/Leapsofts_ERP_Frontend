@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -25,6 +25,12 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import { useUsers } from '@/hooks/api/useUsers';
 import { useInvoices } from '@/hooks/api/useInvoices';
+import { useKanbanBoards } from '@/hooks/api/useKanban';
+import { useReport } from '@/hooks/api/useReports';
+import { ReportExportButton } from '@/components/reports/ReportExportButton';
+import DownloadIcon from '@mui/icons-material/Download';
+import api from '@/lib/axios';
+import { DEPARTMENT_OPTIONS } from '@/lib/constants';
 import {
   useConfirmAiAction,
   useRejectAiAction,
@@ -212,8 +218,17 @@ const ACTION_TYPE_TITLES: Record<AiPendingAction['actionType'], string> = {
   create_lead: 'Create Lead Proposal',
   update_lead: 'Lead Edit Proposal',
   log_lead_follow_up: 'Log LinkedIn Follow-up',
+  add_lead_comment: 'Add Lead Comment',
+  update_lead_comment: 'Update Lead Comment',
+  qualify_lead: 'Qualify Lead',
+  disqualify_lead: 'Disqualify Lead',
+  export_leads: 'Export Leads (Excel)',
   update_user: 'User Profile Edit Proposal',
+  create_user: 'Create User / Member',
+  add_team_member: 'Add Team Member',
   create_meeting: 'Meeting Booking Proposal',
+  update_meeting: 'Update Meeting',
+  generate_report: 'Generate Formal Report',
   create_kpi: 'Create KPI',
   update_kpi: 'Update KPI',
   assign_kpi_template: 'Assign standalone KPI template',
@@ -233,6 +248,7 @@ const ACTION_TYPE_TITLES: Record<AiPendingAction['actionType'], string> = {
   update_project: 'Update Project',
   add_project_member: 'Assign Project Member',
   create_kanban_board: 'Create Kanban Board',
+  update_kanban_board: 'Update Kanban Board',
   assign_kanban_card: 'Assign Task Card',
   create_icp: 'Add ICP',
   rename_icp: 'Rename ICP',
@@ -253,7 +269,11 @@ const DEFAULT_DUE_TIME = '23:59';
 
 const parseDueParts = (iso?: string) => {
   if (!iso) return { date: '', time: '' };
-  const d = new Date(iso);
+  const trimmed = String(iso).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return { date: trimmed, time: DEFAULT_DUE_TIME };
+  }
+  const d = new Date(trimmed);
   if (Number.isNaN(d.getTime())) {
     const parts = String(iso).split('T');
     return { date: parts[0] || '', time: parts[1]?.slice(0, 5) || '' };
@@ -296,6 +316,103 @@ interface AiActionPreviewCardProps {
   action: AiPendingAction;
   onConfirmed?: (action: AiPendingAction, entityResult: unknown) => void;
 }
+
+const ReportDownloadBox = ({ reportId }: { reportId: string }) => {
+  const { data: report, isLoading } = useReport(reportId);
+  const status = report?.status;
+
+  if (isLoading || status === 'pending' || status === 'processing' || !status) {
+    return (
+      <Box sx={{ mt: 1.5 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+          Generating report PDF &amp; Excel...
+        </Typography>
+      </Box>
+    );
+  }
+
+  if (status === 'failed') {
+    return (
+      <Box sx={{ mt: 1.5 }}>
+        <Typography variant="caption" color="error" sx={{ fontWeight: 600 }}>
+          {report?.error || 'Report generation failed.'}
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ mt: 1.5 }}>
+      <ReportExportButton reportId={reportId} />
+    </Box>
+  );
+};
+
+const LeadExportDownloadBox = ({ applied }: { applied: Record<string, unknown> }) => {
+  const [downloading, setDownloading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleDownload = async () => {
+    try {
+      setDownloading(true);
+      setErrorMsg(null);
+      const scope = applied.scope === 'all' ? 'all' : 'filtered';
+      const fields = Array.isArray(applied.fields) ? applied.fields : ['firstName', 'lastName', 'email', 'icp', 'profile'];
+      const filters = applied.filters && typeof applied.filters === 'object' ? applied.filters : undefined;
+      const res = await api.post(
+        '/leads/export',
+        { scope, format: 'xlsx', fields, ...(filters ? { filters } : {}) },
+        { responseType: 'blob' },
+      );
+      const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `leads-export-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      let msg = 'Failed to download leads export.';
+      const respData = (err as { response?: { data?: unknown } })?.response?.data;
+      if (respData instanceof Blob) {
+        try {
+          const text = await respData.text();
+          const parsed = JSON.parse(text) as { message?: string; error?: { message?: string } };
+          msg = parsed?.error?.message || parsed?.message || msg;
+        } catch {
+          // keep fallback
+        }
+      }
+      setErrorMsg(msg);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <Box sx={{ mt: 1.5 }}>
+      <Button
+        variant="outlined"
+        startIcon={<DownloadIcon />}
+        onClick={handleDownload}
+        disabled={downloading}
+        fullWidth
+        sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 650 }}
+      >
+        {downloading ? 'Preparing Excel...' : 'Download Leads (.xlsx)'}
+      </Button>
+      {errorMsg && (
+        <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.5 }}>
+          {errorMsg}
+        </Typography>
+      )}
+    </Box>
+  );
+};
 
 export const AiActionPreviewCard = ({
   action,
@@ -343,6 +460,28 @@ export const AiActionPreviewCard = ({
   }, [action.actionType, action.proposed]);
 
   const isTaskCard = action.actionType === 'create_kanban_card' || action.actionType === 'update_kanban_card';
+  const isAssignTaskCard = action.actionType === 'assign_kanban_card';
+  const isAddProjectMember = action.actionType === 'add_project_member';
+  const isQualifyLead = action.actionType === 'qualify_lead';
+  const isLeadComment = action.actionType === 'add_lead_comment' || action.actionType === 'update_lead_comment';
+  const isUserAction = action.actionType === 'create_user' || action.actionType === 'update_user';
+  const isCompactCard =
+    action.actionType === 'create_project' ||
+    action.actionType === 'update_project' ||
+    isAddProjectMember ||
+    action.actionType === 'create_kanban_board' ||
+    action.actionType === 'update_kanban_board' ||
+    action.actionType === 'move_kanban_card' ||
+    action.actionType === 'update_meeting' ||
+    action.actionType === 'generate_report' ||
+    action.actionType === 'add_lead_comment' ||
+    action.actionType === 'update_lead_comment' ||
+    action.actionType === 'qualify_lead' ||
+    action.actionType === 'disqualify_lead' ||
+    action.actionType === 'export_leads' ||
+    action.actionType === 'create_user' ||
+    action.actionType === 'add_team_member';
+  const hasTaskAssigneeField = isTaskCard || isAssignTaskCard;
   const isCreateInvoice = action.actionType === 'create_invoice';
 
   const invoiceTargetClientId = useMemo(() => {
@@ -393,10 +532,14 @@ export const AiActionPreviewCard = ({
 
   const displayInvoiceNumber = isInvoiceNumberCustom ? customInvoiceNumber : autoInvoiceNumber;
 
-  const { data: dbUsers = [] } = useUsers({}, { enabled: isTaskCard });
+  const { data: dbUsers = [] } = useUsers({}, { enabled: hasTaskAssigneeField || isAddProjectMember });
+  const { data: kanbanBoards = [] } = useKanbanBoards({ enabled: isQualifyLead });
 
   const initialAssigneeId = useMemo(() => {
-    if (!isTaskCard) return '';
+    if (!hasTaskAssigneeField) return '';
+    if (action.status === 'confirmed' && Array.isArray(action.applied?.assignedTo)) {
+      return action.applied.assignedTo.length > 0 ? String(action.applied.assignedTo[0]) : '';
+    }
     const op = action.proposed?.operation as Record<string, unknown> | undefined;
     if (Array.isArray(op?.assignedTo) && op.assignedTo.length > 0) {
       return String(op.assignedTo[0]);
@@ -410,15 +553,148 @@ export const AiActionPreviewCard = ({
       if (match) return match._id;
     }
     return '';
-  }, [isTaskCard, action.proposed, dbUsers]);
+  }, [hasTaskAssigneeField, action.status, action.applied, action.proposed, dbUsers]);
 
   const [editedAssigneeId, setEditedAssigneeId] = useState<string>('');
+  const userEditedAssigneeRef = useRef(false);
 
-  useMemo(() => {
-    if (initialAssigneeId && !editedAssigneeId) {
+  const initialProjectMemberId = useMemo(() => {
+    if (!isAddProjectMember) return '';
+    if (action.status === 'confirmed' && action.applied?.userId) {
+      return String(action.applied.userId);
+    }
+    const op = action.proposed?.operation as Record<string, unknown> | undefined;
+    if (op?.userId) return String(op.userId);
+    return '';
+  }, [isAddProjectMember, action.status, action.applied, action.proposed]);
+
+  const [editedProjectMemberId, setEditedProjectMemberId] = useState<string>('');
+  const userEditedProjectMemberRef = useRef(false);
+
+  const initialProjectRole = useMemo(() => {
+    if (!isAddProjectMember) return 'member';
+    if (action.status === 'confirmed' && action.applied?.role) {
+      return String(action.applied.role) === 'admin' ? 'admin' : 'member';
+    }
+    const op = action.proposed?.operation as Record<string, unknown> | undefined;
+    const raw = String(op?.role || action.proposed?.role || 'member').toLowerCase();
+    return raw === 'admin' ? 'admin' : 'member';
+  }, [isAddProjectMember, action.status, action.applied, action.proposed]);
+
+  const [editedProjectRole, setEditedProjectRole] = useState<string>(initialProjectRole);
+  const userEditedProjectRoleRef = useRef(false);
+
+  const initialQualifyBoardId = useMemo(() => {
+    if (!isQualifyLead) return '';
+    if (action.status === 'confirmed' && action.applied?.boardId) {
+      return String(action.applied.boardId);
+    }
+    const op = action.proposed?.operation as Record<string, unknown> | undefined;
+    return op?.boardId ? String(op.boardId) : '';
+  }, [isQualifyLead, action.status, action.applied, action.proposed]);
+
+  const [editedQualifyBoardId, setEditedQualifyBoardId] = useState<string>(initialQualifyBoardId);
+  const userEditedQualifyBoardRef = useRef(false);
+
+  const initialCommentLevel = useMemo(() => {
+    if (!isLeadComment) return 'yellow';
+    if (action.status === 'confirmed' && action.applied?.level) {
+      return String(action.applied.level);
+    }
+    const op = action.proposed?.operation as Record<string, unknown> | undefined;
+    const raw = String(op?.level || action.proposed?.level || 'yellow').toLowerCase();
+    return raw === 'red' || raw === 'green' || raw === 'yellow' ? raw : 'yellow';
+  }, [isLeadComment, action.status, action.applied, action.proposed]);
+
+  const [editedCommentLevel, setEditedCommentLevel] = useState<string>(initialCommentLevel);
+  const userEditedCommentLevelRef = useRef(false);
+
+  const initialUserRole = useMemo(() => {
+    if (!isUserAction) return '';
+    if (action.status === 'confirmed' && action.applied?.role) return String(action.applied.role);
+    const op = action.proposed?.operation as Record<string, unknown> | undefined;
+    return String(op?.role || action.proposed?.role || (action.actionType === 'create_user' ? 'user' : ''));
+  }, [isUserAction, action.status, action.applied, action.proposed, action.actionType]);
+
+  const initialUserDepartment = useMemo(() => {
+    if (!isUserAction) return '';
+    if (action.status === 'confirmed' && action.applied?.department) return String(action.applied.department);
+    const op = action.proposed?.operation as Record<string, unknown> | undefined;
+    return String(op?.department || action.proposed?.department || '');
+  }, [isUserAction, action.status, action.applied, action.proposed]);
+
+  const initialUserPermissions = useMemo(() => {
+    if (!isUserAction) return {} as Record<string, boolean>;
+    if (action.status === 'confirmed' && action.applied?.permissions && typeof action.applied.permissions === 'object') {
+      return { ...(action.applied.permissions as Record<string, boolean>) };
+    }
+    const op = action.proposed?.operation as Record<string, unknown> | undefined;
+    const raw = (op?.permissions || action.proposed?._permissionsOp) as Record<string, boolean> | undefined;
+    return raw && typeof raw === 'object' ? { ...raw } : {};
+  }, [isUserAction, action.status, action.applied, action.proposed]);
+
+  const [editedUserRole, setEditedUserRole] = useState<string>(initialUserRole);
+  const [editedUserDepartment, setEditedUserDepartment] = useState<string>(initialUserDepartment);
+  const [editedUserPassword, setEditedUserPassword] = useState<string>(() => {
+    if (action.actionType !== 'create_user') return '';
+    const op = action.proposed?.operation as Record<string, unknown> | undefined;
+    return String(op?.password || action.proposed?.password || '');
+  });
+  const [editedUserPermissions, setEditedUserPermissions] = useState<Record<string, boolean>>(initialUserPermissions);
+  const userEditedUserMetaRef = useRef(false);
+
+  useEffect(() => {
+    userEditedAssigneeRef.current = false;
+    userEditedProjectMemberRef.current = false;
+    userEditedProjectRoleRef.current = false;
+    userEditedQualifyBoardRef.current = false;
+    userEditedCommentLevelRef.current = false;
+    userEditedUserMetaRef.current = false;
+  }, [action.actionId]);
+
+  useEffect(() => {
+    if (action.status === 'confirmed') {
+      setEditedAssigneeId(initialAssigneeId);
+      setEditedProjectMemberId(initialProjectMemberId);
+      setEditedProjectRole(initialProjectRole);
+      setEditedQualifyBoardId(initialQualifyBoardId);
+      setEditedCommentLevel(initialCommentLevel);
+      setEditedUserRole(initialUserRole);
+      setEditedUserDepartment(initialUserDepartment);
+      setEditedUserPermissions(initialUserPermissions);
+      return;
+    }
+    if (!userEditedAssigneeRef.current && initialAssigneeId) {
       setEditedAssigneeId(initialAssigneeId);
     }
-  }, [initialAssigneeId, editedAssigneeId]);
+    if (!userEditedProjectMemberRef.current && initialProjectMemberId) {
+      setEditedProjectMemberId(initialProjectMemberId);
+    }
+    if (!userEditedProjectRoleRef.current) {
+      setEditedProjectRole(initialProjectRole);
+    }
+    if (!userEditedQualifyBoardRef.current) {
+      setEditedQualifyBoardId(initialQualifyBoardId);
+    }
+    if (!userEditedCommentLevelRef.current) {
+      setEditedCommentLevel(initialCommentLevel);
+    }
+    if (!userEditedUserMetaRef.current) {
+      setEditedUserRole(initialUserRole);
+      setEditedUserDepartment(initialUserDepartment);
+      setEditedUserPermissions(initialUserPermissions);
+    }
+  }, [
+    action.status,
+    initialAssigneeId,
+    initialProjectMemberId,
+    initialProjectRole,
+    initialQualifyBoardId,
+    initialCommentLevel,
+    initialUserRole,
+    initialUserDepartment,
+    initialUserPermissions,
+  ]);
 
   const [showDescription, setShowDescription] = useState<boolean>(() => {
     return Boolean(action.proposed?.description && String(action.proposed.description).trim().length > 0);
@@ -430,8 +706,23 @@ export const AiActionPreviewCard = ({
         ([k]) => k !== 'priority' && k !== 'dueDate' && k !== 'description' && k !== 'assignedTo',
       );
     }
+    if (isAssignTaskCard) {
+      return proposedEntries.filter(([k]) => k !== 'assignedTo');
+    }
+    if (isAddProjectMember) {
+      return proposedEntries.filter(([k]) => k !== 'member' && k !== 'role');
+    }
+    if (isQualifyLead) {
+      return proposedEntries.filter(([k]) => k !== 'isQualified' && k !== 'board' && k !== 'lead');
+    }
+    if (isLeadComment) {
+      return proposedEntries.filter(([k]) => k !== 'level');
+    }
+    if (isUserAction) {
+      return proposedEntries.filter(([k]) => k !== 'role' && k !== 'department' && k !== 'permissions' && k !== 'password');
+    }
     return proposedEntries;
-  }, [isTaskCard, proposedEntries]);
+  }, [isTaskCard, isAssignTaskCard, isAddProjectMember, isQualifyLead, isLeadComment, isUserAction, proposedEntries]);
 
   const [sendGoogleInvite, setSendGoogleInvite] = useState<boolean>(() => {
     if (action.actionType !== 'create_meeting') return false;
@@ -449,6 +740,8 @@ export const AiActionPreviewCard = ({
       initial.priority = true;
       initial.dueDate = Boolean(action.proposed?.dueDate);
       initial.description = Boolean(action.proposed?.description && String(action.proposed.description).trim().length > 0);
+      initial.assignedTo = Boolean(action.proposed?.assignedTo || (action.proposed?.operation as Record<string, unknown> | undefined)?.assignedTo);
+    } else if (isAssignTaskCard) {
       initial.assignedTo = Boolean(action.proposed?.assignedTo || (action.proposed?.operation as Record<string, unknown> | undefined)?.assignedTo);
     }
     return initial;
@@ -479,6 +772,27 @@ export const AiActionPreviewCard = ({
     }
     const overrides: Record<string, unknown> = {};
     for (const [k] of proposedEntries) {
+      if (isTaskCard && (k === 'priority' || k === 'dueDate' || k === 'description' || k === 'assignedTo')) {
+        continue;
+      }
+      if (isAssignTaskCard && k === 'assignedTo') {
+        continue;
+      }
+      if (isAddProjectMember && (k === 'member' || k === 'role')) {
+        continue;
+      }
+      if (isQualifyLead && (k === 'isQualified' || k === 'board' || k === 'lead')) {
+        continue;
+      }
+      if (isLeadComment && k === 'level') {
+        continue;
+      }
+      if (action.actionType === 'export_leads') {
+        continue;
+      }
+      if (isUserAction && (k === 'role' || k === 'department' || k === 'permissions' || k === 'password')) {
+        continue;
+      }
       if (selectedFields[k]) {
         if (isCreateInvoice && k === 'client') continue;
         if (k === 'durationMinutes') {
@@ -491,18 +805,44 @@ export const AiActionPreviewCard = ({
         }
       }
     }
-    if (isTaskCard) {
-      if (selectedFields.priority && editedValues.priority) {
+    if (hasTaskAssigneeField) {
+      if (isTaskCard && selectedFields.priority && editedValues.priority) {
         overrides.priority = editedValues.priority;
       }
-      if (selectedFields.dueDate && editedValues.dueDate) {
+      if (isTaskCard && selectedFields.dueDate && editedValues.dueDate) {
         overrides.dueDate = editedValues.dueDate;
       }
-      if (selectedFields.description && editedValues.description?.trim()) {
+      if (isTaskCard && selectedFields.description && editedValues.description?.trim()) {
         overrides.description = editedValues.description.trim();
       }
       if (selectedFields.assignedTo) {
         overrides.assignedTo = editedAssigneeId ? [editedAssigneeId] : [];
+      }
+    }
+    if (isAddProjectMember) {
+      if (selectedFields.member && editedProjectMemberId) {
+        overrides.userId = editedProjectMemberId;
+      }
+      if (selectedFields.role && editedProjectRole) {
+        overrides.role = editedProjectRole;
+      }
+    }
+    if (isQualifyLead) {
+      if (editedQualifyBoardId) {
+        overrides.boardId = editedQualifyBoardId;
+      }
+    }
+    if (isLeadComment) {
+      overrides.level = editedCommentLevel;
+    }
+    if (isUserAction) {
+      if (editedUserRole) overrides.role = editedUserRole;
+      if (editedUserDepartment) overrides.department = editedUserDepartment;
+      if (action.actionType === 'create_user' && editedUserPassword.trim()) {
+        overrides.password = editedUserPassword.trim();
+      }
+      if (Object.keys(editedUserPermissions).length > 0) {
+        overrides.permissions = editedUserPermissions;
       }
     }
     if (isCreateInvoice) {
@@ -580,6 +920,8 @@ export const AiActionPreviewCard = ({
       sx={{
         mt: 1.5,
         p: 2,
+        width: '100%',
+        maxWidth: isAssignTaskCard ? 340 : isTaskCard ? 520 : isCompactCard ? 460 : undefined,
         borderRadius: '16px',
         border: `1px solid ${
           action.status === 'confirmed'
@@ -976,11 +1318,12 @@ export const AiActionPreviewCard = ({
           </Box>
         )}
 
-        {isTaskCard && (
+        {hasTaskAssigneeField && (
           <>
-            {/* Priority & Due Date 2-Column Row */}
+            {/* Priority, Due Date & Assignee Row */}
             <Grid container spacing={1}>
-              <Grid item xs={12} sm={5}>
+              {isTaskCard && (
+                <Grid item xs={12} sm={5}>
                 <Box
                   sx={{
                     display: 'flex',
@@ -1081,7 +1424,10 @@ export const AiActionPreviewCard = ({
                 </Box>
               </Grid>
 
-              <Grid item xs={12} sm={7}>
+              )}
+
+              {isTaskCard && (
+                <Grid item xs={12} sm={7}>
                 <Box
                   sx={{
                     display: 'flex',
@@ -1194,7 +1540,7 @@ export const AiActionPreviewCard = ({
                             }
                           }}
                           sx={{
-                            width: 95,
+                            width: 112,
                             flexShrink: 0,
                             '& .MuiInputBase-input': {
                               fontSize: '0.78rem',
@@ -1212,9 +1558,10 @@ export const AiActionPreviewCard = ({
                   </Box>
                 </Box>
               </Grid>
+              )}
 
               {/* Row 2: Assignee (Priority jitna) */}
-              <Grid item xs={12} sm={5}>
+              <Grid item xs={12} sm={isTaskCard ? 5 : 12}>
                 <Box
                   sx={{
                     display: 'flex',
@@ -1270,6 +1617,7 @@ export const AiActionPreviewCard = ({
                         disabled={!selectedFields.assignedTo}
                         value={editedAssigneeId}
                         onChange={(e) => {
+                          userEditedAssigneeRef.current = true;
                           setEditedAssigneeId(e.target.value);
                           setSelectedFields((prev) => ({ ...prev, assignedTo: true }));
                         }}
@@ -1300,30 +1648,40 @@ export const AiActionPreviewCard = ({
                           );
                         })}
                       </TextField>
-                    ) : (
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontWeight: 600,
-                        }}
-                        title={
-                          dbUsers.find((u) => u._id === editedAssigneeId)
-                            ? [dbUsers.find((u) => u._id === editedAssigneeId)?.firstName, dbUsers.find((u) => u._id === editedAssigneeId)?.lastName].filter(Boolean).join(' ').trim() || 'Assigned'
-                            : action.proposed?.assignedTo ? String(action.proposed.assignedTo) : 'Unassigned'
-                        }
-                      >
-                        {dbUsers.find((u) => u._id === editedAssigneeId)
-                          ? [dbUsers.find((u) => u._id === editedAssigneeId)?.firstName, dbUsers.find((u) => u._id === editedAssigneeId)?.lastName].filter(Boolean).join(' ').trim() || 'Assigned'
-                          : action.proposed?.assignedTo ? String(action.proposed.assignedTo) : 'Unassigned'}
-                      </Typography>
-                    )}
+                    ) : (() => {
+                      const appliedAssigned =
+                        action.status === 'confirmed' && Array.isArray(action.applied?.assignedTo)
+                          ? (action.applied.assignedTo as unknown[]).map(String)
+                          : null;
+                      const resolvedId = appliedAssigned ? (appliedAssigned[0] || '') : editedAssigneeId;
+                      const matchedUser = resolvedId ? dbUsers.find((u) => u._id === resolvedId) : undefined;
+                      const displayLabel = matchedUser
+                        ? [matchedUser.firstName, matchedUser.lastName].filter(Boolean).join(' ').trim() || matchedUser.email || 'Assigned'
+                        : appliedAssigned
+                          ? 'Unassigned'
+                          : action.proposed?.assignedTo
+                            ? String(action.proposed.assignedTo)
+                            : 'Unassigned';
+                      return (
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                          }}
+                          title={displayLabel}
+                        >
+                          {displayLabel}
+                        </Typography>
+                      );
+                    })()}
                   </Box>
                 </Box>
               </Grid>
             </Grid>
 
             {/* Description (Collapsible / Expandable & Scroll-Managed) */}
-            <Box sx={{ mt: 0.5 }}>
+            {isTaskCard && (
+              <Box sx={{ mt: 0.5 }}>
               {showDescription ? (
                 <Box
                   sx={{
@@ -1453,7 +1811,591 @@ export const AiActionPreviewCard = ({
                 </Button>
               ) : null}
             </Box>
+            )}
           </>
+        )}
+
+        {isAddProjectMember && (
+          <Grid container spacing={1}>
+            <Grid item xs={12}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 1,
+                  p: 1,
+                  borderRadius: '10px',
+                  bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+                  border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                }}
+              >
+                {isPending && (
+                  <Checkbox
+                    size="small"
+                    checked={Boolean(selectedFields.member)}
+                    onChange={(e) =>
+                      setSelectedFields((prev) => ({ ...prev, member: e.target.checked }))
+                    }
+                    sx={{ p: 0.25, mt: 0.25 }}
+                  />
+                )}
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                        color: 'text.secondary',
+                      }}
+                    >
+                      Team Member
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label="New"
+                      sx={{
+                        height: 16,
+                        fontSize: '0.62rem',
+                        fontWeight: 700,
+                        bgcolor: 'rgba(45, 138, 94, 0.12)',
+                        color: tokens.semantic.success,
+                      }}
+                    />
+                  </Box>
+                  {isPending ? (
+                    <TextField
+                      select
+                      fullWidth
+                      size="small"
+                      disabled={!selectedFields.member}
+                      value={editedProjectMemberId}
+                      onChange={(e) => {
+                        userEditedProjectMemberRef.current = true;
+                        setEditedProjectMemberId(e.target.value);
+                        setSelectedFields((prev) => ({ ...prev, member: true }));
+                      }}
+                      sx={{
+                        '& .MuiInputBase-input': {
+                          fontSize: '0.8rem',
+                          py: 0.4,
+                          display: 'flex',
+                          alignItems: 'center',
+                        },
+                      }}
+                    >
+                      {dbUsers.map((u) => {
+                        const name = [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email || 'User';
+                        return (
+                          <MenuItem key={u._id} value={u._id}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <PersonOutlineIcon sx={{ fontSize: 16, color: 'primary.main', flexShrink: 0 }} />
+                              <span>{name}</span>
+                            </Box>
+                          </MenuItem>
+                        );
+                      })}
+                    </TextField>
+                  ) : (() => {
+                    const resolvedId =
+                      action.status === 'confirmed' && action.applied?.userId
+                        ? String(action.applied.userId)
+                        : editedProjectMemberId;
+                    const matchedUser = resolvedId ? dbUsers.find((u) => u._id === resolvedId) : undefined;
+                    const label = matchedUser
+                      ? [matchedUser.firstName, matchedUser.lastName].filter(Boolean).join(' ').trim() || matchedUser.email || 'Member'
+                      : action.proposed?.member
+                        ? String(action.proposed.member)
+                        : 'Member';
+                    return (
+                      <Typography variant="body2" sx={{ fontWeight: 600 }} title={label}>
+                        {label}
+                      </Typography>
+                    );
+                  })()}
+                </Box>
+              </Box>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 1,
+                  p: 1,
+                  borderRadius: '10px',
+                  bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+                  border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                }}
+              >
+                {isPending && (
+                  <Checkbox
+                    size="small"
+                    checked={Boolean(selectedFields.role)}
+                    onChange={(e) =>
+                      setSelectedFields((prev) => ({ ...prev, role: e.target.checked }))
+                    }
+                    sx={{ p: 0.25, mt: 0.25 }}
+                  />
+                )}
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                        color: 'text.secondary',
+                      }}
+                    >
+                      Role
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label="New"
+                      sx={{
+                        height: 16,
+                        fontSize: '0.62rem',
+                        fontWeight: 700,
+                        bgcolor: 'rgba(45, 138, 94, 0.12)',
+                        color: tokens.semantic.success,
+                      }}
+                    />
+                  </Box>
+                  {isPending ? (
+                    <TextField
+                      select
+                      fullWidth
+                      size="small"
+                      disabled={!selectedFields.role}
+                      value={editedProjectRole}
+                      onChange={(e) => {
+                        userEditedProjectRoleRef.current = true;
+                        setEditedProjectRole(e.target.value);
+                        setSelectedFields((prev) => ({ ...prev, role: true }));
+                      }}
+                      sx={{
+                        '& .MuiInputBase-input': {
+                          fontSize: '0.8rem',
+                          py: 0.4,
+                        },
+                      }}
+                    >
+                      <MenuItem value="member">Member</MenuItem>
+                      <MenuItem value="admin">Admin</MenuItem>
+                    </TextField>
+                  ) : (
+                    <Typography variant="body2" sx={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                      {action.status === 'confirmed' && action.applied?.role
+                        ? String(action.applied.role)
+                        : editedProjectRole || 'member'}
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            </Grid>
+          </Grid>
+        )}
+
+        {isQualifyLead && (
+          <Grid container spacing={1}>
+            <Grid item xs={12}>
+              <Box
+                sx={{
+                  p: 1,
+                  borderRadius: '10px',
+                  bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+                  border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    color: 'text.secondary',
+                    display: 'block',
+                    mb: 0.3,
+                  }}
+                >
+                  Lead
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {String(action.proposed?.lead || action.targetLabel || 'Lead')}
+                </Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={12}>
+              <Box
+                sx={{
+                  p: 1,
+                  borderRadius: '10px',
+                  bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+                  border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      color: 'text.secondary',
+                    }}
+                  >
+                    Target Board
+                  </Typography>
+                  <Chip
+                    size="small"
+                    label="Kanban"
+                    sx={{
+                      height: 16,
+                      fontSize: '0.62rem',
+                      fontWeight: 700,
+                      bgcolor: 'rgba(45, 138, 94, 0.12)',
+                      color: tokens.semantic.success,
+                    }}
+                  />
+                </Box>
+                {isPending ? (
+                  <TextField
+                    select
+                    fullWidth
+                    size="small"
+                    value={editedQualifyBoardId}
+                    onChange={(e) => {
+                      userEditedQualifyBoardRef.current = true;
+                      setEditedQualifyBoardId(e.target.value);
+                    }}
+                    sx={{
+                      '& .MuiInputBase-input': {
+                        fontSize: '0.8rem',
+                        py: 0.4,
+                      },
+                    }}
+                  >
+                    <MenuItem value="">Qualified (Default)</MenuItem>
+                    {kanbanBoards.map((b) => (
+                      <MenuItem key={b._id} value={b._id}>
+                        {b.name}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                ) : (
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {kanbanBoards.find((b) => b._id === editedQualifyBoardId)?.name ||
+                      String(action.proposed?.board || 'Qualified (Default)')}
+                  </Typography>
+                )}
+              </Box>
+            </Grid>
+          </Grid>
+        )}
+
+        {isLeadComment && (
+          <Box
+            sx={{
+              p: 1,
+              borderRadius: '10px',
+              bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+              border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.4 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  color: 'text.secondary',
+                }}
+              >
+                Comment Level
+              </Typography>
+            </Box>
+            {isPending ? (
+              <TextField
+                select
+                fullWidth
+                size="small"
+                value={editedCommentLevel}
+                onChange={(e) => {
+                  userEditedCommentLevelRef.current = true;
+                  setEditedCommentLevel(e.target.value);
+                }}
+                sx={{
+                  '& .MuiInputBase-input': {
+                    fontSize: '0.8rem',
+                    py: 0.4,
+                  },
+                }}
+              >
+                <MenuItem value="green">Green (Positive)</MenuItem>
+                <MenuItem value="yellow">Yellow (Neutral / Follow-up)</MenuItem>
+                <MenuItem value="red">Red (Issue / Negative)</MenuItem>
+              </TextField>
+            ) : (
+              <Typography variant="body2" sx={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                {editedCommentLevel}
+              </Typography>
+            )}
+          </Box>
+        )}
+
+        {isUserAction && (
+          <Grid container spacing={1}>
+            {action.actionType === 'create_user' && (
+              <Grid item xs={12}>
+                <Box
+                  sx={{
+                    p: 1,
+                    borderRadius: '10px',
+                    bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+                    border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.4,
+                    }}
+                  >
+                    Password (Optional)
+                  </Typography>
+                  {isPending ? (
+                    <TextField
+                      fullWidth
+                      size="small"
+                      placeholder="Leave empty to auto-generate & email user"
+                      value={editedUserPassword}
+                      onChange={(e) => setEditedUserPassword(e.target.value)}
+                      sx={{ '& .MuiInputBase-input': { fontSize: '0.8rem', py: 0.4 } }}
+                    />
+                  ) : (
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {editedUserPassword ? '••••••••' : 'Auto-generated & emailed'}
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+            )}
+            {(action.actionType === 'create_user' || Boolean(action.proposed?.role)) && (
+              <Grid item xs={12} sm={6}>
+                <Box
+                  sx={{
+                    p: 1,
+                    borderRadius: '10px',
+                    bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+                    border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.4,
+                    }}
+                  >
+                    Role
+                  </Typography>
+                  {isPending ? (
+                    <TextField
+                      select
+                      fullWidth
+                      size="small"
+                      value={editedUserRole || 'user'}
+                      onChange={(e) => {
+                        userEditedUserMetaRef.current = true;
+                        setEditedUserRole(e.target.value);
+                      }}
+                      sx={{ '& .MuiInputBase-input': { fontSize: '0.8rem', py: 0.4 } }}
+                    >
+                      <MenuItem value="user">User</MenuItem>
+                      <MenuItem value="manager">Manager</MenuItem>
+                      <MenuItem value="admin">Admin</MenuItem>
+                    </TextField>
+                  ) : (
+                    <Typography variant="body2" sx={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                      {editedUserRole || 'user'}
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+            )}
+
+            {(action.actionType === 'create_user' || Boolean(action.proposed?.department)) && (
+              <Grid item xs={12} sm={6}>
+                <Box
+                  sx={{
+                    p: 1,
+                    borderRadius: '10px',
+                    bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+                    border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.4,
+                    }}
+                  >
+                    Department
+                  </Typography>
+                  {isPending ? (
+                    <TextField
+                      select
+                      fullWidth
+                      size="small"
+                      value={editedUserDepartment}
+                      onChange={(e) => {
+                        userEditedUserMetaRef.current = true;
+                        setEditedUserDepartment(e.target.value);
+                      }}
+                      sx={{ '& .MuiInputBase-input': { fontSize: '0.8rem', py: 0.4 } }}
+                    >
+                      <MenuItem value="">None</MenuItem>
+                      {DEPARTMENT_OPTIONS.map((dept) => (
+                        <MenuItem key={dept} value={dept}>
+                          {dept}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  ) : (
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {editedUserDepartment || 'None'}
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+            )}
+
+            {(action.actionType === 'create_user' || Boolean(action.proposed?.permissions)) && (
+              <Grid item xs={12}>
+                <Box
+                  sx={{
+                    p: 1,
+                    borderRadius: '10px',
+                    bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#fff',
+                    border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      color: 'text.secondary',
+                      display: 'block',
+                      mb: 0.5,
+                    }}
+                  >
+                    Permissions
+                  </Typography>
+                  <Grid container spacing={0.5}>
+                    {[
+                      ['viewSalesPage', 'Sales Page'],
+                      ['accessAllOrgLeads', 'All Org Leads'],
+                      ['accessTeam', 'Team Access'],
+                      ['viewAllAttendance', 'All Attendance'],
+                      ['manageSalesSettings', 'Sales Settings'],
+                      ['manageSystemSettings', 'System Settings'],
+                      ['createProjectsAndBoards', 'Projects & Boards'],
+                      ['accessInvoicing', 'Invoicing'],
+                    ].map(([key, label]) => {
+                      const active = Boolean(editedUserPermissions[key]);
+                      return (
+                        <Grid item xs={12} sm={6} key={key}>
+                          <Box
+                            onClick={
+                              isPending
+                                ? () => {
+                                    userEditedUserMetaRef.current = true;
+                                    setEditedUserPermissions((prev) => ({
+                                      ...prev,
+                                      [key]: !prev[key],
+                                    }));
+                                  }
+                                : undefined
+                            }
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              px: 1,
+                              py: 0.35,
+                              borderRadius: '8px',
+                              cursor: isPending ? 'pointer' : 'default',
+                              bgcolor: active
+                                ? isDarkMode
+                                  ? 'rgba(93, 26, 137, 0.18)'
+                                  : 'rgba(93, 26, 137, 0.06)'
+                                : 'transparent',
+                              border: `1px solid ${
+                                active
+                                  ? 'rgba(93, 26, 137, 0.3)'
+                                  : isDarkMode
+                                    ? 'rgba(255,255,255,0.06)'
+                                    : 'rgba(0,0,0,0.06)'
+                              }`,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontWeight: active ? 700 : 500,
+                                color: active ? 'text.primary' : 'text.secondary',
+                                fontSize: '0.74rem',
+                              }}
+                            >
+                              {label}
+                            </Typography>
+                            <Switch
+                              size="small"
+                              checked={active}
+                              disabled={!isPending}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={
+                                isPending
+                                  ? () => {
+                                      userEditedUserMetaRef.current = true;
+                                      setEditedUserPermissions((prev) => ({
+                                        ...prev,
+                                        [key]: !prev[key],
+                                      }));
+                                    }
+                                  : undefined
+                              }
+                            />
+                          </Box>
+                        </Grid>
+                      );
+                    })}
+                  </Grid>
+                </Box>
+              </Grid>
+            )}
+          </Grid>
         )}
       </Box>
 
@@ -1533,6 +2475,18 @@ export const AiActionPreviewCard = ({
           </Button>
         </Box>
       )}
+
+      {action.actionType === 'generate_report' &&
+        action.status === 'confirmed' &&
+        Boolean(action.applied?.reportId) && (
+          <ReportDownloadBox reportId={String(action.applied?.reportId)} />
+        )}
+
+      {action.actionType === 'export_leads' &&
+        action.status === 'confirmed' &&
+        Boolean(action.applied) && (
+          <LeadExportDownloadBox applied={action.applied as Record<string, unknown>} />
+        )}
     </Box>
   );
 };
