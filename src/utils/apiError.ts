@@ -22,13 +22,24 @@ const readBody = (error: unknown): ApiErrorBody | undefined => {
   return undefined;
 };
 
+const cleanErrorText = (text: string): string => {
+  if (text.includes('validation failed:') || text.includes('Cast to embedded failed')) {
+    const match = text.match(/at path "([^"]+)"/i);
+    if (match?.[1]) {
+      return `Invalid format for ${match[1]}`;
+    }
+    return 'Validation failed. Please check your inputs.';
+  }
+  return text;
+};
+
 export const getApiErrorMessage = (error: unknown): string => {
   const body = readBody(error);
   const rawMessage = body?.error?.message;
-  const message = typeof rawMessage === 'string' ? rawMessage.trim() : '';
+  let message = typeof rawMessage === 'string' ? cleanErrorText(rawMessage.trim()) : '';
   const details = Array.isArray(body?.error?.details)
     ? body.error.details
-        .map((detail) => (typeof detail?.message === 'string' ? detail.message.trim() : ''))
+        .map((detail) => (typeof detail?.message === 'string' ? cleanErrorText(detail.message.trim()) : ''))
         .filter(Boolean)
     : [];
   const extra = details.filter((detail) => detail !== message);

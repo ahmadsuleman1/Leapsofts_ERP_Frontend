@@ -92,6 +92,7 @@ export interface UserPresence {
 
 export interface UserPermissions {
   viewSalesPage: boolean;
+  accessAllOrgLeads: boolean;
   accessTeam: boolean;
   viewAllAttendance: boolean;
   manageSystemSettings: boolean;
