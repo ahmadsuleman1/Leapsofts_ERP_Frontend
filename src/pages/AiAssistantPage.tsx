@@ -1441,7 +1441,7 @@ export const AiAssistantPage = () => {
               multiline
               maxRows={5}
               size="small"
-              placeholder="Ask Lumi anything, or paste/upload a screenshot of an error for step-by-step help..."
+              placeholder="Ask Lumi — how can I help you?"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onPaste={pendingScreenshots.handlePaste}

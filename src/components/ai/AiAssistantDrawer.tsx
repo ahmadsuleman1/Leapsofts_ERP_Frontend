@@ -1162,7 +1162,7 @@ export const AiAssistantDrawer = () => {
               multiline
               maxRows={4}
               size="small"
-              placeholder="Ask Lumi anything, or paste/upload a screenshot of an error..."
+              placeholder="Ask Lumi — how can I help you?"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onPaste={pendingScreenshots.handlePaste}
