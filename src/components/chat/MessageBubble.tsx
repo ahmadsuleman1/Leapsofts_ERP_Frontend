@@ -10,6 +10,12 @@ import {
   Popover,
   ClickAwayListener,
   Divider,
+  TextField,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import type { Message, MessageReaction, User } from '@/types';
 import { chatMentionSx, sanitizeChatHtml } from '@/utils/chatHtml';
@@ -22,7 +28,8 @@ import {
   resolveReplySnippet,
   type TickStatus,
 } from '@/utils/chatMessageUtils';
-import { useSetMessageReaction } from '@/hooks/api/useChat';
+import { useSetMessageReaction, useEditMessage, useDeleteMessage } from '@/hooks/api/useChat';
+import { showApiError } from '@/utils/apiError';
 import {
   MessageInfoDialog,
   type MessageInfoParticipant,
@@ -43,6 +50,8 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import ImageIcon from '@mui/icons-material/Image';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EmojiPicker, { Theme as EmojiTheme, type EmojiClickData } from 'emoji-picker-react';
 
 /**
@@ -117,7 +126,12 @@ export const MessageBubble = React.memo(({
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [quickAnchor, setQuickAnchor] = useState<HTMLElement | null>(null);
   const [pickerAnchor, setPickerAnchor] = useState<HTMLElement | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState('');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const setReaction = useSetMessageReaction();
+  const editMessageMutation = useEditMessage();
+  const deleteMessageMutation = useDeleteMessage();
 
   // Mobile long-press detection without interfering with scrolling
   const touchStartPos = React.useRef<{ x: number; y: number } | null>(null);
@@ -446,6 +460,7 @@ export const MessageBubble = React.memo(({
             }}
           >
             {messageTime}
+            {message.editedAt ? ' · edited' : ''}
           </Typography>
           {isOwn && (
             <Box
@@ -741,6 +756,75 @@ export const MessageBubble = React.memo(({
               </Box>
             ) : isImageFile ? (
               <FileMessage message={message} isOwn={isOwn} mentionableUsers={mentionableUsers} />
+            ) : isEditing ? (
+              <Box
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 220 }}
+              >
+                <TextField
+                  multiline
+                  minRows={1}
+                  maxRows={6}
+                  size="small"
+                  autoFocus
+                  fullWidth
+                  value={editDraft}
+                  onChange={(e) => setEditDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setIsEditing(false);
+                    } else if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      const trimmed = editDraft.trim();
+                      if (!trimmed || editMessageMutation.isPending) return;
+                      editMessageMutation.mutate(
+                        { conversationId, messageId: targetMessageId, content: trimmed },
+                        {
+                          onSuccess: () => setIsEditing(false),
+                          onError: (err) => showApiError(err),
+                        },
+                      );
+                    }
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      bgcolor: isDarkMode ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.9)',
+                      fontSize: '0.85rem',
+                    },
+                  }}
+                />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.75 }}>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => setIsEditing(false)}
+                    disabled={editMessageMutation.isPending}
+                    sx={{ textTransform: 'none', fontSize: '0.75rem', minWidth: 0, px: 1 }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={!editDraft.trim() || editMessageMutation.isPending}
+                    onClick={() => {
+                      const trimmed = editDraft.trim();
+                      if (!trimmed) return;
+                      editMessageMutation.mutate(
+                        { conversationId, messageId: targetMessageId, content: trimmed },
+                        {
+                          onSuccess: () => setIsEditing(false),
+                          onError: (err) => showApiError(err),
+                        },
+                      );
+                    }}
+                    sx={{ textTransform: 'none', fontSize: '0.75rem', minWidth: 0, px: 1.5 }}
+                  >
+                    {editMessageMutation.isPending ? 'Saving...' : 'Save'}
+                  </Button>
+                </Box>
+              </Box>
             ) : (
               /* ───── Regular Text Message ───── */
               <Box
@@ -856,7 +940,26 @@ export const MessageBubble = React.memo(({
           )}
           </Box>
 
-          {(canReact || onReply) && (
+          {(() => {
+            const ageMs = message.createdAt ? Date.now() - new Date(message.createdAt).getTime() : Infinity;
+            const within24h = Number.isFinite(ageMs) && ageMs <= 24 * 60 * 60 * 1000;
+            const canEditMsg = Boolean(
+              isOwn &&
+                !message.isPending &&
+                targetMessageId &&
+                !targetMessageId.startsWith('temp-') &&
+                message.type === 'text' &&
+                within24h,
+            );
+            const canDeleteMsg = Boolean(
+              isOwn &&
+                !message.isPending &&
+                targetMessageId &&
+                !targetMessageId.startsWith('temp-') &&
+                message.type !== 'board_event' &&
+                within24h,
+            );
+            return (canReact || onReply || canEditMsg || canDeleteMsg) ? (
             <Box
               className="msg-hover-action"
               sx={{
@@ -927,8 +1030,57 @@ export const MessageBubble = React.memo(({
                   </IconButton>
                 </Tooltip>
               )}
+
+              {canEditMsg && (
+                <Tooltip title="Edit message" arrow>
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      const plain = (message.content || '').replace(/<[^>]+>/g, '');
+                      setEditDraft(plain);
+                      setIsEditing(true);
+                    }}
+                    sx={{
+                      color: 'text.secondary',
+                      width: 28,
+                      height: 28,
+                      bgcolor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                      '&:hover': {
+                        bgcolor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                        color: tokens.brand.primary,
+                      },
+                    }}
+                    aria-label="Edit message"
+                  >
+                    <EditOutlinedIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
+              )}
+
+              {canDeleteMsg && (
+                <Tooltip title="Delete message" arrow>
+                  <IconButton
+                    size="small"
+                    onClick={() => setDeleteConfirmOpen(true)}
+                    sx={{
+                      color: 'text.secondary',
+                      width: 28,
+                      height: 28,
+                      bgcolor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                      '&:hover': {
+                        bgcolor: 'rgba(211, 47, 47, 0.1)',
+                        color: '#d32f2f',
+                      },
+                    }}
+                    aria-label="Delete message"
+                  >
+                    <DeleteOutlineIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
+              )}
             </Box>
-          )}
+          ) : null;
+          })()}
         </Box>
       </Box>
     </Box>
@@ -1166,6 +1318,46 @@ export const MessageBubble = React.memo(({
           : undefined
       }
     />
+
+    <Dialog
+      open={deleteConfirmOpen}
+      onClose={() => !deleteMessageMutation.isPending && setDeleteConfirmOpen(false)}
+      maxWidth="xs"
+      fullWidth
+    >
+      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Delete Message?</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary">
+          This message will be permanently deleted for everyone in this chat.
+        </Typography>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button
+          onClick={() => setDeleteConfirmOpen(false)}
+          disabled={deleteMessageMutation.isPending}
+          sx={{ textTransform: 'none' }}
+        >
+          Cancel
+        </Button>
+        <Button
+          color="error"
+          variant="contained"
+          disabled={deleteMessageMutation.isPending}
+          onClick={() => {
+            deleteMessageMutation.mutate(
+              { conversationId, messageId: targetMessageId },
+              {
+                onSuccess: () => setDeleteConfirmOpen(false),
+                onError: (err) => showApiError(err),
+              },
+            );
+          }}
+          sx={{ textTransform: 'none' }}
+        >
+          {deleteMessageMutation.isPending ? 'Deleting...' : 'Delete'}
+        </Button>
+      </DialogActions>
+    </Dialog>
     </>
   );
 });

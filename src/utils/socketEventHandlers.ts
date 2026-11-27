@@ -441,6 +441,41 @@ export const setupSocketEventHandlers = (
     });
   });
 
+  socket.on(SOCKET_EVENTS.MESSAGE_DELETED, (data: unknown) => {
+    const payload = data as {
+      conversationId?: string;
+      messageId?: string;
+      lastMessage?: Message | null;
+    };
+    const conversationId = payload.conversationId;
+    const messageId = payload.messageId;
+    if (!conversationId || !messageId) return;
+
+    queryClient.setQueriesData<Message[] | MessagesInfiniteData>(
+      { queryKey: ['messages', conversationId] },
+      (old) =>
+        mapMessageCache(old, (messages) => messages.filter((msg) => msg._id !== messageId)),
+    );
+
+    queryClient.setQueriesData<Conversation[]>({ queryKey: ['conversations'] }, (old) => {
+      if (!old) return old;
+      return old.map((conv) => {
+        if (conv._id !== conversationId) return conv;
+        const lastMsgId =
+          typeof conv.lastMessage === 'object' && conv.lastMessage !== null
+            ? (conv.lastMessage as Message)._id
+            : undefined;
+        if (lastMsgId === messageId) {
+          return {
+            ...conv,
+            lastMessage: payload.lastMessage ? normalizeMessageReceipts(payload.lastMessage) : undefined,
+          };
+        }
+        return conv;
+      });
+    });
+  });
+
   socket.on(SOCKET_EVENTS.MESSAGE_READ, (data: unknown) => {
     const { conversationId, userId, messageIds, at } = data as {
       conversationId: string;

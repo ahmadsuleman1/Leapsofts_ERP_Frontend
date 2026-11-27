@@ -1179,6 +1179,7 @@ export interface Message {
   readAt?: Record<string, string>;
   replyTo?: string | MessageReplySnippet;
   reactions?: MessageReaction[];
+  editedAt?: string;
   createdAt: string;
 }
 
