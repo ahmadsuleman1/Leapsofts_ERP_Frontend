@@ -528,6 +528,27 @@ export const ChatWindow = ({ onSearchOpen, onDriveOpen }: ChatWindowProps) => {
             ? userMap.get(replySenderRef) || replySenderRef
             : replySenderRef;
         replyTo = { ...replyTo, sender: replySenderObj, senderId: replySenderObj };
+      } else if (typeof replyTo === 'string') {
+        const parentMsg = displayMessages.find(
+          (m: any) => m._id === replyTo || m.originalMessageId === replyTo,
+        );
+        if (parentMsg) {
+          const parentAny = parentMsg as any;
+          const replySenderRef = parentAny.sender || parentAny.senderId;
+          const replySenderObj =
+            typeof replySenderRef === 'string'
+              ? userMap.get(replySenderRef) || replySenderRef
+              : replySenderRef;
+          replyTo = {
+            _id: parentAny._id,
+            content: parentAny.content,
+            type: parentAny.type,
+            sender: replySenderObj,
+            senderId: replySenderObj,
+            driveFileName: parentAny.driveFileName,
+            fileUrl: parentAny.fileUrl,
+          };
+        }
       }
 
       const msg = { ...rawMsg, sender: senderObj, replyTo };
@@ -735,7 +756,9 @@ export const ChatWindow = ({ onSearchOpen, onDriveOpen }: ChatWindowProps) => {
     setTimeout(() => scrollToBottom('auto'), 120);
     setTimeout(() => scrollToBottom('auto'), 300);
 
-    const replyToId = replyingTo?._id;
+    const replyToId =
+      (replyingTo as any)?.originalMessageId ||
+      replyingTo?._id?.replace(/-(attachment|text)$/, '');
     const caption = text.trim();
 
     const postDriveFile = (conversationId: string, file: DriveFile, content: string, replyTo?: string, fallbackFile?: File) => {

@@ -109,6 +109,15 @@ const chatApi = {
       `/chat/conversations/${data.conversationId}/messages/${data.messageId}/reaction`,
       { emoji: data.emoji },
     ),
+  editMessage: (data: { conversationId: string; messageId: string; content: string }) =>
+    api.patch<{ data: Message }>(
+      `/chat/conversations/${data.conversationId}/messages/${data.messageId}`,
+      { content: data.content },
+    ),
+  deleteMessage: (data: { conversationId: string; messageId: string }) =>
+    api.delete<{ data: { deleted: true; conversationId: string; messageId: string; lastMessage?: Message | null } }>(
+      `/chat/conversations/${data.conversationId}/messages/${data.messageId}`,
+    ),
   markRead: (conversationId: string) => {
     const socket = getSocket();
     if (socket.connected) {
@@ -366,8 +375,32 @@ const reconcileSentMessageInCache = (
   const currentUserId = useAuthStore.getState().user?._id;
   const existingPending = tempId ? findMessageInCache(old, tempId) : undefined;
   const existingReal = findMessageInCache(old, realMessage._id);
+
+  // Preserve rich replyTo snippet if realMessage only has string ID or lacks details
+  const existingReplyTo =
+    (existingReal?.replyTo && typeof existingReal.replyTo === 'object'
+      ? existingReal.replyTo
+      : undefined) ||
+    (existingPending?.replyTo && typeof existingPending.replyTo === 'object'
+      ? existingPending.replyTo
+      : undefined);
+
+  const finalReplyTo =
+    realMessage.replyTo && typeof realMessage.replyTo === 'object'
+      ? realMessage.replyTo
+      : existingReplyTo || realMessage.replyTo;
+
+  const existingSender = existingReal?.sender || existingPending?.sender;
+  const finalSender = realMessage.sender || existingSender;
+
+  const normalizedReal: Message = {
+    ...realMessage,
+    ...(finalReplyTo ? { replyTo: finalReplyTo } : {}),
+    ...(finalSender ? { sender: finalSender } : {}),
+  };
+
   const mergedWithExisting = mergeMessageReceipts(
-    mergeMessageReceipts(realMessage, existingPending),
+    mergeMessageReceipts(normalizedReal, existingPending),
     existingReal,
   );
 
@@ -673,6 +706,72 @@ export const useSetMessageReaction = () => {
             ),
         );
       }
+    },
+  });
+};
+
+export const useEditMessage = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: chatApi.editMessage,
+    onSuccess: (res, variables) => {
+      const updated = normalizeMessageReceipts((res.data as { data: Message }).data);
+      if (!updated?._id) return;
+      queryClient.setQueriesData<Message[] | MessagesInfiniteData>(
+        { queryKey: ['messages', variables.conversationId] },
+        (old) =>
+          mapMessageCache(old, (messages) =>
+            messages.map((m) => (m._id === updated._id ? { ...m, ...updated } : m)),
+          ),
+      );
+      queryClient.setQueriesData<Conversation[]>({ queryKey: ['conversations'] }, (old) => {
+        if (!old) return old;
+        return old.map((conv) => {
+          if (conv._id !== variables.conversationId) return conv;
+          const lastMsgId =
+            typeof conv.lastMessage === 'object' && conv.lastMessage !== null
+              ? (conv.lastMessage as Message)._id
+              : undefined;
+          if (lastMsgId === updated._id) {
+            return { ...conv, lastMessage: updated };
+          }
+          return conv;
+        });
+      });
+    },
+  });
+};
+
+export const useDeleteMessage = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: chatApi.deleteMessage,
+    onSuccess: (res, variables) => {
+      const data = (res.data as { data: { messageId: string; lastMessage?: Message | null } }).data;
+      queryClient.setQueriesData<Message[] | MessagesInfiniteData>(
+        { queryKey: ['messages', variables.conversationId] },
+        (old) =>
+          mapMessageCache(old, (messages) =>
+            messages.filter((m) => m._id !== variables.messageId),
+          ),
+      );
+      queryClient.setQueriesData<Conversation[]>({ queryKey: ['conversations'] }, (old) => {
+        if (!old) return old;
+        return old.map((conv) => {
+          if (conv._id !== variables.conversationId) return conv;
+          const lastMsgId =
+            typeof conv.lastMessage === 'object' && conv.lastMessage !== null
+              ? (conv.lastMessage as Message)._id
+              : undefined;
+          if (lastMsgId === variables.messageId) {
+            return {
+              ...conv,
+              lastMessage: data?.lastMessage ? normalizeMessageReceipts(data.lastMessage) : undefined,
+            };
+          }
+          return conv;
+        });
+      });
     },
   });
 };

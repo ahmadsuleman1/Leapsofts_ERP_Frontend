@@ -503,32 +503,17 @@ const LoginPage = () => {
 
             {/* Password Input */}
             <Box sx={{ mb: 1.5 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                <Typography
-                  variant="body2"
-                  sx={{
-                    fontWeight: 600,
-                    color: isDarkMode ? 'rgba(255,255,255,0.85)' : 'rgba(26,22,37,0.85)',
-                    fontSize: '0.85rem',
-                  }}
-                >
-                  Password
-                </Typography>
-                <Typography
-                  variant="body2"
-                  sx={{
-                    color: tokens.brand.primaryMuted,
-                    cursor: 'pointer',
-                    fontSize: '0.8rem',
-                    fontWeight: 500,
-                    transition: 'color 0.2s',
-                    '&:hover': { color: tokens.brand.accent },
-                  }}
-                  onClick={() => alert("Please contact your administrator to reset your password.")}
-                >
-                  Forgot password?
-                </Typography>
-              </Box>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  mb: 1,
+                  color: isDarkMode ? 'rgba(255,255,255,0.85)' : 'rgba(26,22,37,0.85)',
+                  fontSize: '0.85rem',
+                }}
+              >
+                Password
+              </Typography>
               <TextField
                 {...register('password')}
                 id="login-password"

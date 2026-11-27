@@ -29,6 +29,7 @@ import ReplayRoundedIcon from '@mui/icons-material/ReplayRounded';
 import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded';
 import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded';
 import MenuOpenRoundedIcon from '@mui/icons-material/MenuOpenRounded';
+import AddPhotoAlternateOutlinedIcon from '@mui/icons-material/AddPhotoAlternateOutlined';
 import {
   useAiConfig,
   useAiConversations,
@@ -56,6 +57,11 @@ import {
   AiCompletedPhasesSummary,
 } from '@/components/ai/AiAgentPhaseTimeline';
 import { AI_STARTER_PROMPTS, getAiStarterPrompts, formatTokenCount } from '@/components/ai/aiUiConstants';
+import {
+  usePendingScreenshots,
+  AiPendingScreenshotsBar,
+  AiMessageAttachments,
+} from '@/components/ai/AiScreenshotAttachments';
 import { usePermissions } from '@/hooks/usePermissions';
 
 const formatRelativeDate = (iso: string): string => {
@@ -134,6 +140,8 @@ export const AiAssistantPage = () => {
   const deleteConversation = useDeleteAiConversation();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingScreenshots = usePendingScreenshots();
   const currentConvKey = getConvKey(activeConversationId);
   const currentEphemeral = ephemeralByConv[currentConvKey] ?? [];
   const currentPendingOp = pendingByConv[currentConvKey];
@@ -225,8 +233,23 @@ export const AiAssistantPage = () => {
 
   const handleSend = (promptOverride?: string) => {
     const text = (promptOverride ?? input).trim();
-    if (!text || Boolean(currentPendingOp)) return;
-    if (!promptOverride) setInput('');
+    const filesToSend = promptOverride ? [] : pendingScreenshots.files;
+    if ((!text && filesToSend.length === 0) || Boolean(currentPendingOp)) return;
+
+    const displayText =
+      text ||
+      'Please inspect this screenshot, identify what went wrong, and guide me step-by-step on how to fix it.';
+    const optimisticAttachments = promptOverride
+      ? undefined
+      : pendingScreenshots.items.map((item) => ({
+          url: item.previewUrl,
+          mimeType: item.file.type || 'image/png',
+        }));
+
+    if (!promptOverride) {
+      setInput('');
+      pendingScreenshots.clear();
+    }
 
     const originConvId = activeConversationId;
     const isNewDraft = !originConvId || isDraftKey(originConvId);
@@ -255,7 +278,10 @@ export const AiAssistantPage = () => {
     const optimisticUserMsg: AiChatDisplayMessage = {
       _id: tempUserMsgId,
       role: 'user',
-      content: text,
+      content: displayText,
+      ...(optimisticAttachments && optimisticAttachments.length > 0
+        ? { attachments: optimisticAttachments }
+        : {}),
       createdAt: new Date().toISOString(),
       isOptimistic: true,
     };
@@ -277,6 +303,7 @@ export const AiAssistantPage = () => {
         provider: selectedProvider,
         contextLeadId: aiContextLeadId ?? undefined,
         requestId,
+        screenshots: filesToSend.length > 0 ? filesToSend : undefined,
         signal: controller.signal,
       },
       {
@@ -1152,16 +1179,19 @@ export const AiAssistantPage = () => {
                     )}
 
                     {isUser ? (
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
-                          lineHeight: 1.6,
-                        }}
-                      >
-                        {m.content}
-                      </Typography>
+                      <>
+                        <AiMessageAttachments attachments={m.attachments} isUser />
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          {m.content}
+                        </Typography>
+                      </>
                     ) : (
                       <Box
                         sx={{
@@ -1361,72 +1391,118 @@ export const AiAssistantPage = () => {
         <Divider />
 
         {/* Composer */}
-        <Box sx={{ px: { xs: 2, sm: 4 }, py: 2, display: 'flex', alignItems: 'flex-end', gap: 1.25 }}>
-          <TextField
-            fullWidth
-            multiline
-            maxRows={5}
-            size="small"
-            placeholder="Ask Lumi to enrich a lead, check sales progress, or book a meeting..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape' && currentPendingOp) {
-                e.preventDefault();
-                abortOperation(currentConvKey);
-              } else if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                borderRadius: '14px',
-              },
-            }}
+        <Box
+          onDragOver={(e) => {
+            if (e.dataTransfer?.types?.includes('Files')) e.preventDefault();
+          }}
+          onDrop={(e) => {
+            if (e.dataTransfer?.files?.length) {
+              e.preventDefault();
+              pendingScreenshots.addFiles(e.dataTransfer.files);
+            }
+          }}
+        >
+          <AiPendingScreenshotsBar
+            items={pendingScreenshots.items}
+            onRemove={pendingScreenshots.removeAt}
           />
-          {currentPendingOp ? (
-            <Tooltip title="Stop generating (Esc)" arrow>
+          <Box sx={{ px: { xs: 2, sm: 4 }, py: 2, display: 'flex', alignItems: 'flex-end', gap: 1.25 }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              hidden
+              onChange={(e) => {
+                if (e.target.files) pendingScreenshots.addFiles(e.target.files);
+                e.target.value = '';
+              }}
+            />
+            <Tooltip title="Attach screenshot (or paste with Ctrl+V)" arrow>
+              <span>
+                <IconButton
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={Boolean(currentPendingOp)}
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    color: 'text.secondary',
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: '12px',
+                    '&:hover': { color: tokens.brand.solid, borderColor: tokens.brand.solid },
+                  }}
+                >
+                  <AddPhotoAlternateOutlinedIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <TextField
+              fullWidth
+              multiline
+              maxRows={5}
+              size="small"
+              placeholder="Ask Lumi — how can I help you?"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onPaste={pendingScreenshots.handlePaste}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape' && currentPendingOp) {
+                  e.preventDefault();
+                  abortOperation(currentConvKey);
+                } else if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '14px',
+                },
+              }}
+            />
+            {currentPendingOp ? (
+              <Tooltip title="Stop generating (Esc)" arrow>
+                <IconButton
+                  color="error"
+                  onClick={() => abortOperation(currentConvKey)}
+                  sx={{
+                    bgcolor: isDarkMode ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.12)',
+                    color: theme.palette.error.main,
+                    width: 42,
+                    height: 42,
+                    border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`,
+                    '&:hover': {
+                      bgcolor: theme.palette.error.main,
+                      color: '#fff',
+                    },
+                  }}
+                >
+                  <StopRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : (
               <IconButton
-                color="error"
-                onClick={() => abortOperation(currentConvKey)}
+                color="primary"
+                onClick={() => handleSend()}
+                disabled={!input.trim() && pendingScreenshots.files.length === 0}
                 sx={{
-                  bgcolor: isDarkMode ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.12)',
-                  color: theme.palette.error.main,
+                  bgcolor: tokens.brand.solid,
+                  color: '#fff',
                   width: 42,
                   height: 42,
-                  border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`,
                   '&:hover': {
-                    bgcolor: theme.palette.error.main,
-                    color: '#fff',
+                    bgcolor: tokens.brand.solid,
+                    opacity: 0.9,
+                  },
+                  '&.Mui-disabled': {
+                    bgcolor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
                   },
                 }}
               >
-                <StopRoundedIcon fontSize="small" />
+                <SendRoundedIcon fontSize="small" />
               </IconButton>
-            </Tooltip>
-          ) : (
-            <IconButton
-              color="primary"
-              onClick={() => handleSend()}
-              disabled={!input.trim()}
-              sx={{
-                bgcolor: tokens.brand.solid,
-                color: '#fff',
-                width: 42,
-                height: 42,
-                '&:hover': {
-                  bgcolor: tokens.brand.solid,
-                  opacity: 0.9,
-                },
-                '&.Mui-disabled': {
-                  bgcolor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-                },
-              }}
-            >
-              <SendRoundedIcon fontSize="small" />
-            </IconButton>
-          )}
+            )}
+          </Box>
         </Box>
       </Box>
 

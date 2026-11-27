@@ -31,9 +31,20 @@ export interface AiPendingAction {
   actionId: string;
   actionType:
     | 'enrich_lead'
+    | 'create_lead'
     | 'update_lead'
+    | 'log_lead_follow_up'
+    | 'add_lead_comment'
+    | 'update_lead_comment'
+    | 'qualify_lead'
+    | 'disqualify_lead'
+    | 'export_leads'
     | 'update_user'
+    | 'create_user'
+    | 'add_team_member'
     | 'create_meeting'
+    | 'update_meeting'
+    | 'generate_report'
     | 'create_kpi'
     | 'update_kpi'
     | 'assign_kpi_template'
@@ -48,7 +59,23 @@ export interface AiPendingAction {
     | 'dispute_invoice'
     | 'create_kanban_card'
     | 'move_kanban_card'
-    | 'update_kanban_card';
+    | 'update_kanban_card'
+    | 'create_kanban_subtask'
+    | 'update_kanban_subtask'
+    | 'assign_kanban_subtask'
+    | 'create_project'
+    | 'update_project'
+    | 'add_project_member'
+    | 'create_kanban_board'
+    | 'update_kanban_board'
+    | 'assign_kanban_card'
+    | 'create_icp'
+    | 'rename_icp'
+    | 'remove_icp'
+    | 'create_profile'
+    | 'rename_profile'
+    | 'remove_profile'
+    | 'update_org_settings';
   status: 'pending' | 'confirmed' | 'rejected';
   targetId?: string;
   targetLabel: string;
@@ -78,10 +105,19 @@ export interface AiToolCallLog {
   summary?: string;
 }
 
+export interface AiMessageAttachment {
+  url?: string;
+  publicId?: string;
+  mimeType: string;
+  bytes?: number;
+  expiredAt?: string;
+}
+
 export interface AiMessage {
   _id?: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  attachments?: AiMessageAttachment[];
   provider?: AiProviderType;
   toolCalls?: AiToolCallLog[];
   pendingAction?: AiPendingAction;
@@ -206,9 +242,31 @@ export const useSendAiMessage = () => {
       provider?: AiProviderType;
       contextLeadId?: string;
       requestId?: string;
+      screenshots?: File[];
       signal?: AbortSignal;
     }) => {
-      const { signal, ...body } = payload;
+      const { signal, screenshots, ...body } = payload;
+      if (screenshots && screenshots.length > 0) {
+        const formData = new FormData();
+        if (body.conversationId) formData.append('conversationId', body.conversationId);
+        formData.append('message', body.message);
+        if (body.provider) formData.append('provider', body.provider);
+        if (body.contextLeadId) formData.append('contextLeadId', body.contextLeadId);
+        if (body.requestId) formData.append('requestId', body.requestId);
+        screenshots.forEach((file) => formData.append('screenshots', file));
+        return api
+          .post<
+            ApiResponse<{
+              conversation: AiConversation;
+              replyMessage: AiMessage;
+              quota: AiQuotaSummary;
+            }>
+          >('/ai/chat', formData, {
+            signal,
+            headers: { 'Content-Type': undefined },
+          })
+          .then((r) => r.data.data);
+      }
       return api
         .post<
           ApiResponse<{
